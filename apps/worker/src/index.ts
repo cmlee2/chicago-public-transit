@@ -1,11 +1,14 @@
 import cron from "node-cron";
 import { pollBusArrivals } from "./cta-bus.js";
 import { pollTrainArrivals } from "./cta-train.js";
+import { pollBusVehicles, pollTrainVehicles, cleanStaleVehicles } from "./vehicles.js";
+import { seedBusStops } from "./seed-bus-stops.js";
 import { checkAndNotify } from "./notify.js";
 import { supabase } from "./supabase.js";
 import {
   BUS_POLL_INTERVAL,
   TRAIN_POLL_INTERVAL,
+  VEHICLE_POLL_INTERVAL,
   ROUTE_CACHE_INTERVAL,
 } from "@cpt/shared";
 
@@ -90,14 +93,32 @@ async function cleanStaleArrivals() {
 
 console.log("Worker starting...");
 
-// Initial cache
-cacheRoutes();
+// Initial cache, then seed bus stops after routes are cached
+cacheRoutes().then(() => {
+  // Check if bus stops exist already
+  supabase
+    .from("stops")
+    .select("stop_id", { count: "exact", head: true })
+    .eq("type", "bus")
+    .then(({ count }) => {
+      if (!count || count < 100) {
+        console.log("Bus stops not seeded yet, seeding...");
+        seedBusStops();
+      } else {
+        console.log(`${count} bus stops already in DB, skipping seed`);
+      }
+    });
+});
 
 // Poll bus arrivals every 30s
 setInterval(pollBus, BUS_POLL_INTERVAL);
 
 // Poll train arrivals every 30s
 setInterval(pollTrain, TRAIN_POLL_INTERVAL);
+
+// Poll vehicle positions every 15s
+setInterval(pollBusVehicles, VEHICLE_POLL_INTERVAL);
+setInterval(pollTrainVehicles, VEHICLE_POLL_INTERVAL);
 
 // Cache routes every hour
 setInterval(cacheRoutes, ROUTE_CACHE_INTERVAL);
@@ -108,8 +129,13 @@ cron.schedule("* * * * *", checkAndNotify);
 // Clean stale arrivals every 5 minutes
 cron.schedule("*/5 * * * *", cleanStaleArrivals);
 
+// Clean stale vehicles every 3 minutes
+cron.schedule("*/3 * * * *", cleanStaleVehicles);
+
 // Run initial polls
 pollBus();
 pollTrain();
+pollBusVehicles();
+pollTrainVehicles();
 
 console.log("Worker running. Polling CTA APIs...");

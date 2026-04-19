@@ -1,17 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import type { DbStop, DbArrival } from "@cpt/shared";
+import type { DbStop } from "@cpt/shared";
 import { TRAIN_LINES } from "@cpt/shared";
 import { useAuth } from "@clerk/nextjs";
+import Link from "next/link";
+
+interface Prediction {
+  route: string;
+  direction: string;
+  destination: string;
+  eta: string;
+  minutes: number;
+  vehicleId: string;
+  isDelayed: boolean;
+  type: "bus" | "train";
+}
 
 export default function StopDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { userId } = useAuth();
   const [stop, setStop] = useState<DbStop | null>(null);
-  const [arrivals, setArrivals] = useState<DbArrival[]>([]);
+  const [predictions, setPredictions] = useState<Prediction[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isFavorite, setIsFavorite] = useState(false);
   const [togglingFav, setTogglingFav] = useState(false);
 
@@ -27,54 +40,30 @@ export default function StopDetailPage() {
       });
   }, [id]);
 
-  // Fetch initial arrivals + subscribe to realtime
+  // Fetch live predictions from CTA API
+  const fetchPredictions = useCallback(async () => {
+    if (!stop) return;
+    try {
+      const res = await fetch(
+        `/api/stop-predictions?stpid=${id}&type=${stop.type}`
+      );
+      const data = await res.json();
+      if (data.predictions) {
+        setPredictions(data.predictions);
+      }
+    } catch {
+      // silently fail
+    }
+    setLoading(false);
+  }, [id, stop]);
+
+  // Initial fetch + poll every 30s
   useEffect(() => {
-    supabase
-      .from("arrivals")
-      .select("*")
-      .eq("stop_id", id)
-      .order("eta", { ascending: true })
-      .then(({ data }) => {
-        if (data) setArrivals(data);
-      });
-
-    const channel = supabase
-      .channel(`arrivals-${id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "arrivals",
-          filter: `stop_id=eq.${id}`,
-        },
-        (payload) => {
-          if (payload.eventType === "DELETE") {
-            setArrivals((prev) =>
-              prev.filter((a) => a.id !== (payload.old as DbArrival).id)
-            );
-          } else {
-            const arrival = payload.new as DbArrival;
-            setArrivals((prev) => {
-              const idx = prev.findIndex((a) => a.id === arrival.id);
-              const updated =
-                idx >= 0
-                  ? prev.map((a, i) => (i === idx ? arrival : a))
-                  : [...prev, arrival];
-              return updated.sort(
-                (a, b) =>
-                  new Date(a.eta).getTime() - new Date(b.eta).getTime()
-              );
-            });
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [id]);
+    if (!stop) return;
+    fetchPredictions();
+    const interval = setInterval(fetchPredictions, 30_000);
+    return () => clearInterval(interval);
+  }, [stop, fetchPredictions]);
 
   // Check if favorited
   useEffect(() => {
@@ -122,62 +111,116 @@ export default function StopDetailPage() {
       ? TRAIN_LINES[stop.route_id as keyof typeof TRAIN_LINES]?.color
       : undefined;
 
+  // Group predictions by route for summary
+  const routeSummary = new Map<
+    string,
+    { route: string; type: "bus" | "train"; color: string; count: number }
+  >();
+  for (const p of predictions) {
+    if (!routeSummary.has(p.route)) {
+      const color =
+        p.type === "train"
+          ? (TRAIN_LINES[p.route as keyof typeof TRAIN_LINES]?.color ?? "#888")
+          : "#1d4ed8";
+      routeSummary.set(p.route, { route: p.route, type: p.type, color, count: 0 });
+    }
+    routeSummary.get(p.route)!.count++;
+  }
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
-      <div className="flex items-center gap-3">
-        {lineColor && (
-          <span
-            className="h-4 w-4 rounded-full"
-            style={{ backgroundColor: lineColor }}
-          />
+      <Link href="/stops" className="text-xs font-semibold tracking-wider text-muted-foreground hover:text-foreground uppercase">
+        ← Back to stops
+      </Link>
+
+      <div className="mt-6 flex items-center gap-4">
+        {lineColor ? (
+          <div className="cta-roundel shrink-0" style={{ backgroundColor: lineColor, width: '2.5rem', height: '2.5rem', fontSize: '0.6rem' }}>
+            {stop.route_id}
+          </div>
+        ) : (
+          <div className="cta-roundel shrink-0 bg-[#1d4ed8]" style={{ width: '2.5rem', height: '2.5rem', fontSize: '0.55rem' }}>
+            BUS
+          </div>
         )}
-        <h1 className="text-2xl font-bold">{stop.name}</h1>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">{stop.name}</h1>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+              {stop.type === "train" ? "Train Station" : "Bus Stop"} · {stop.route_id}
+            </span>
+          </div>
+        </div>
       </div>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {stop.type === "train" ? "Train" : "Bus"} &middot; {stop.route_id}
-      </p>
 
-      {userId && (
-        <button
-          onClick={toggleFavorite}
-          disabled={togglingFav}
-          className="mt-4 rounded-md border px-3 py-1.5 text-sm hover:bg-accent"
-        >
-          {isFavorite ? "★ Favorited" : "☆ Add to Favorites"}
-        </button>
-      )}
+      <div className="mt-4 flex items-center gap-3 flex-wrap">
+        {userId && (
+          <button onClick={toggleFavorite} disabled={togglingFav}
+            className={`rounded px-3 py-1.5 text-xs font-semibold tracking-wide uppercase border transition-colors ${
+              isFavorite ? "bg-yellow-500/15 border-yellow-500/50 text-yellow-500" : "border-border hover:border-primary/50 text-muted-foreground hover:text-foreground"
+            }`}>
+            {isFavorite ? "★ Favorited" : "☆ Add to Favorites"}
+          </button>
+        )}
+        {[...routeSummary.values()].map((r) => (
+          <span key={r.route} className="route-badge" style={{ backgroundColor: r.color }}>
+            {r.type === "train" ? (TRAIN_LINES[r.route as keyof typeof TRAIN_LINES]?.name ?? r.route) : `Route ${r.route}`}
+          </span>
+        ))}
+      </div>
 
-      <h2 className="mt-8 text-lg font-semibold">Upcoming Arrivals</h2>
-      {arrivals.length === 0 ? (
-        <p className="mt-2 text-muted-foreground">No upcoming arrivals</p>
+      {/* Departure board header */}
+      <div className="mt-8 flex items-center gap-3">
+        <h2 className="text-sm font-bold tracking-[0.15em] uppercase">Departures</h2>
+        <div className="flex items-center gap-1.5">
+          <span className="status-dot live" />
+          <span className="text-[10px] text-muted-foreground tracking-wider uppercase">Live</span>
+        </div>
+      </div>
+      <div className="h-px bg-border mt-2" />
+
+      {loading ? (
+        <p className="mt-4 text-muted-foreground">Loading predictions...</p>
+      ) : predictions.length === 0 ? (
+        <p className="mt-4 text-muted-foreground">No upcoming arrivals</p>
       ) : (
-        <ul className="mt-3 space-y-2">
-          {arrivals.map((arrival) => {
-            const eta = new Date(arrival.eta);
-            const minutesAway = Math.max(
-              0,
-              Math.round((eta.getTime() - Date.now()) / 60000)
-            );
-            return (
-              <li
-                key={arrival.id}
-                className="flex items-center justify-between rounded-md border p-3"
-              >
-                <div>
-                  <p className="font-medium">
-                    {arrival.route} &middot; {arrival.direction}
-                  </p>
-                  {arrival.is_delayed && (
-                    <span className="text-xs text-destructive">Delayed</span>
-                  )}
+        <div className="mt-3">
+          {/* Departure board header row */}
+          <div className="flex items-center text-[10px] font-bold tracking-[0.15em] text-muted-foreground uppercase px-3 py-1.5">
+            <span className="w-14">Route</span>
+            <span className="flex-1">Destination</span>
+            <span className="w-16 text-right">ETA</span>
+          </div>
+          <div className="space-y-1">
+            {predictions.map((p, i) => {
+              const routeColor =
+                p.type === "train"
+                  ? (TRAIN_LINES[p.route as keyof typeof TRAIN_LINES]?.color ?? "#888")
+                  : "#1d4ed8";
+
+              return (
+                <div key={`${p.vehicleId}-${p.eta}-${i}`}
+                  className="transit-card flex items-center px-3 py-2.5">
+                  <div className="w-14 shrink-0">
+                    <span className="route-badge" style={{ backgroundColor: routeColor }}>{p.route}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm truncate">{p.destination}</p>
+                    <p className="text-[11px] text-muted-foreground">{p.direction} · #{p.vehicleId}</p>
+                  </div>
+                  <div className="w-16 text-right shrink-0">
+                    <p className={`arrival-time text-lg ${
+                      p.isDelayed ? "delayed" : p.minutes <= 1 ? "due" : p.minutes <= 5 ? "soon" : ""
+                    }`}>
+                      {p.minutes === 0 ? "Due" : `${p.minutes}m`}
+                    </p>
+                    {p.isDelayed && <span className="text-[10px] text-destructive font-semibold uppercase tracking-wider">Delayed</span>}
+                  </div>
                 </div>
-                <p className="text-sm font-semibold">
-                  {minutesAway === 0 ? "Due" : `${minutesAway} min`}
-                </p>
-              </li>
-            );
-          })}
-        </ul>
+              );
+            })}
+          </div>
+        </div>
       )}
     </div>
   );
