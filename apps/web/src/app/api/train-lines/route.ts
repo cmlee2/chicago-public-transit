@@ -14,18 +14,28 @@ const LEGEND_MAP: Record<string, { lineId: string; color: string }> = {
   YL: { lineId: "Y", color: "#f9e300" },
 };
 
-// Which lines share which part of the Loop/shared track
-// Based on actual CTA L map:
-// - North side (Lake St, ~41.885): Brn, G, Org, Pink, P
-// - East side (Wabash, ~-87.626): Brn, G, Org, Pink, P
-// - South side (Van Buren, ~41.877): Brn, Org, P (Green/Pink exit before south)
-// - West side (Wells, ~-87.634): Brn, Org, P (Green/Pink exit before west)
-// - Approaches west of Loop (Clinton/Halsted area): G, Pink only
-// - South of Loop (Roosevelt+): G, Org (separate tracks, not shared)
+// CTA L Map analysis — which lines share each part of shared track:
+//
+// THE LOOP (elevated rectangle downtown):
+//   North side (Lake St, lat~41.886, lng -87.631 to -87.628):
+//     Brn, G, Org, Pink, P — all 5
+//   East side (Wabash Ave, lng~-87.626, lat 41.886 down to 41.877):
+//     Brn, G, Org, Pink, P — all 5
+//   South side (Van Buren St, lat~41.877, lng -87.628 to -87.632):
+//     Brn, Org, P — only 3 (Green exits east→south, Pink exits east→south)
+//   West side (Wells St, lng~-87.634, lat 41.877 up to 41.883):
+//     Brn, Org, P — only 3
+//
+// APPROACHES:
+//   North approach: Merchandise Mart → Clark/Lake (lng~-87.631 to -87.634, lat >41.886):
+//     Brn, P — Brown/Purple from north
+//   West elevated approach: Clinton/Ashland area → Lake (lat~41.886, lng < -87.637):
+//     G, Pink — Green/Pink from west (they merge onto north side of Loop)
+//   South of Loop (lat < 41.876): varies, but Roosevelt area = G, Org on separate tracks
 
 interface LineInfo { lineId: string; color: string }
 
-const ALL_LOOP = [
+const ALL_FIVE: LineInfo[] = [
   { lineId: "Brn", color: "#62361b" },
   { lineId: "G", color: "#009b3a" },
   { lineId: "Org", color: "#f9461c" },
@@ -33,70 +43,100 @@ const ALL_LOOP = [
   { lineId: "P", color: "#522398" },
 ];
 
-const SOUTH_WEST_LOOP = [
+const SOUTH_WEST_LOOP: LineInfo[] = [
   { lineId: "Brn", color: "#62361b" },
   { lineId: "Org", color: "#f9461c" },
   { lineId: "P", color: "#522398" },
 ];
 
-const WEST_APPROACH = [
+const NORTH_APPROACH: LineInfo[] = [
+  { lineId: "Brn", color: "#62361b" },
+  { lineId: "P", color: "#522398" },
+];
+
+const WEST_APPROACH: LineInfo[] = [
   { lineId: "G", color: "#009b3a" },
   { lineId: "Pink", color: "#e27ea6" },
 ];
+
+const GREEN_ORANGE: LineInfo[] = [
+  { lineId: "G", color: "#009b3a" },
+  { lineId: "Org", color: "#f9461c" },
+];
+
+// Loop bounds
+const LOOP_NORTH = 41.886;
+const LOOP_SOUTH = 41.877;
+const LOOP_EAST = -87.626;
+const LOOP_WEST = -87.634;
 
 function getLoopLinesForSegment(coords: [number, number][]): LineInfo[] {
-  // coords are [lat, lng]
   const avgLat = coords.reduce((s, c) => s + c[0], 0) / coords.length;
   const avgLng = coords.reduce((s, c) => s + c[1], 0) / coords.length;
-  const latRange = Math.max(...coords.map((c) => c[0])) - Math.min(...coords.map((c) => c[0]));
-  const lngRange = Math.max(...coords.map((c) => c[1])) - Math.min(...coords.map((c) => c[1]));
+  const minLat = Math.min(...coords.map((c) => c[0]));
+  const maxLat = Math.max(...coords.map((c) => c[0]));
+  const minLng = Math.min(...coords.map((c) => c[1]));
+  const maxLng = Math.max(...coords.map((c) => c[1]));
+  const latRange = maxLat - minLat;
+  const lngRange = maxLng - minLng;
   const isVertical = latRange > lngRange;
 
-  // West approach (far west of the Loop, lng < -87.645)
+  // === WEST APPROACH (far west of Loop, Green + Pink elevated from Clinton) ===
   if (avgLng < -87.645) {
     return WEST_APPROACH;
   }
 
-  // South of Loop (lat < 41.876)
-  if (avgLat < 41.876) {
-    // South segments: only lines that go south
-    if (isVertical) {
-      // N-S segment south of loop — could be east side (Wabash) extension or Roosevelt approach
-      if (avgLng > -87.628) {
-        // East side extending south — Green/Orange
-        return [
-          { lineId: "G", color: "#009b3a" },
-          { lineId: "Org", color: "#f9461c" },
-        ];
+  // === NORTH APPROACH (Merchandise Mart area, north of Loop, Brown + Purple) ===
+  if (avgLat > LOOP_NORTH + 0.001 && isVertical && avgLng > -87.636 && avgLng < -87.630) {
+    return NORTH_APPROACH;
+  }
+
+  // === INSIDE THE LOOP RECTANGLE ===
+  const inLoopLat = avgLat >= LOOP_SOUTH - 0.002 && avgLat <= LOOP_NORTH + 0.002;
+  const inLoopLng = avgLng >= LOOP_WEST - 0.003 && avgLng <= LOOP_EAST + 0.003;
+
+  if (inLoopLat && inLoopLng) {
+    // North side: E-W, lat close to 41.886
+    if (!isVertical && avgLat > 41.883) {
+      // Check if this is the merge area where west approach meets the Loop
+      if (minLng < -87.637) {
+        return ALL_FIVE; // transition zone
       }
+      return ALL_FIVE;
+    }
+
+    // East side: N-S, lng close to -87.626
+    if (isVertical && avgLng > -87.629) {
+      return ALL_FIVE;
+    }
+
+    // South side: E-W, lat close to 41.877
+    if (!isVertical && avgLat < 41.879) {
       return SOUTH_WEST_LOOP;
     }
-    // E-W south of loop
+
+    // West side: N-S, lng close to -87.634
+    if (isVertical && avgLng < -87.631) {
+      return SOUTH_WEST_LOOP;
+    }
+
+    // Diagonal or ambiguous segments inside the Loop
+    if (avgLat > 41.882) return ALL_FIVE;
     return SOUTH_WEST_LOOP;
   }
 
-  // North side of Loop (lat > 41.884, E-W)
-  if (avgLat > 41.884 && !isVertical) {
-    return ALL_LOOP;
-  }
-
-  // East side of Loop (lng > -87.629, N-S)
-  if (avgLng > -87.629 && isVertical) {
-    return ALL_LOOP;
-  }
-
-  // West side of Loop (lng around -87.634, N-S)
-  if (isVertical && avgLng < -87.631) {
+  // === SOUTH OF LOOP ===
+  if (avgLat < LOOP_SOUTH - 0.001) {
+    // Roosevelt area: Green + Orange share some track
+    if (isVertical && avgLng > -87.628) {
+      return GREEN_ORANGE;
+    }
+    // West of Loop going south: only Brn/Org/P
     return SOUTH_WEST_LOOP;
   }
 
-  // South side of Loop (lat < 41.879, E-W)
-  if (avgLat < 41.879 && !isVertical) {
-    return SOUTH_WEST_LOOP;
-  }
-
-  // Default: all lines
-  return ALL_LOOP;
+  // === Default: all five ===
+  return ALL_FIVE;
 }
 
 export interface TrainLineSegment {
@@ -120,9 +160,8 @@ export async function GET() {
     const res = await fetch(CHICAGO_DATA_URL);
     const geojson = await res.json();
 
-    // Collect all coords per feature (preserving feature boundaries for ML)
     const individualLines = new Map<string, [number, number][][]>();
-    const mlFeatureCoords: [number, number][][] = [];
+    const mlSegments: [number, number][][] = [];
 
     for (const feature of geojson.features) {
       const legend: string = feature.properties?.legend ?? "";
@@ -141,10 +180,7 @@ export async function GET() {
       }
 
       if (legend === "ML") {
-        // Keep each ML feature's coords separate for per-segment line assignment
-        for (const coords of featureCoords) {
-          mlFeatureCoords.push(coords);
-        }
+        for (const coords of featureCoords) mlSegments.push(coords);
       } else {
         const existing = individualLines.get(legend) ?? [];
         existing.push(...featureCoords);
@@ -154,14 +190,14 @@ export async function GET() {
 
     const result: TrainLineSegment[] = [];
 
-    // Individual line segments (non-shared)
+    // Individual lines
     for (const [legend, coordinates] of individualLines) {
       const mapping = LEGEND_MAP[legend];
       result.push({ lineId: mapping.lineId, color: mapping.color, coordinates, shared: false });
     }
 
-    // ML segments — assign correct lines per segment based on geography
-    for (const coords of mlFeatureCoords) {
+    // Shared ML segments — assign correct lines per segment
+    for (const coords of mlSegments) {
       const lines = getLoopLinesForSegment(coords);
       for (let i = 0; i < lines.length; i++) {
         result.push({
