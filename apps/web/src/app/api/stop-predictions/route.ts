@@ -5,29 +5,23 @@ const CTA_TRAIN_API_BASE = "http://lapi.transitchicago.com/api/1.0";
 const BUS_API_KEY = process.env.CTA_BUS_API_KEY;
 const TRAIN_API_KEY = process.env.CTA_TRAIN_API_KEY;
 
-// CTA API returns all timestamps in America/Chicago timezone
 const CHICAGO_TZ = "America/Chicago";
 
 function chicagoNow(): Date {
-  // Get current time as a Chicago timestamp, then parse back to get correct UTC millis
   const chicagoStr = new Date().toLocaleString("en-US", { timeZone: CHICAGO_TZ });
   return new Date(chicagoStr);
 }
 
 function parseBusTimestamp(ts: string): { chicagoDate: Date } {
-  // CTA bus format: "YYYYMMDD HH:mm" — in Chicago time
   const year = ts.slice(0, 4);
   const month = ts.slice(4, 6);
   const day = ts.slice(6, 8);
   const time = ts.slice(9);
-  // Parse as Chicago local time by creating a Date from the formatted string
   const chicagoDate = new Date(`${month}/${day}/${year} ${time}:00`);
   return { chicagoDate };
 }
 
 function parseTrainTimestamp(ts: string): { chicagoDate: Date } {
-  // CTA train format: "YYYY-MM-DDTHH:mm:ss" — in Chicago time
-  // Parse with explicit month/day/year format to avoid timezone assumptions
   const [datePart, timePart] = ts.split("T");
   const [year, month, day] = datePart.split("-");
   const chicagoDate = new Date(`${month}/${day}/${year} ${timePart}`);
@@ -42,7 +36,7 @@ export interface Prediction {
   minutes: number;
   vehicleId: string;
   isDelayed: boolean;
-  type: "bus" | "train";
+  type: string;
 }
 
 export async function GET(req: NextRequest) {
@@ -69,14 +63,9 @@ export async function GET(req: NextRequest) {
           const { chicagoDate } = parseBusTimestamp(p.prdtm);
           const minutes = Math.max(0, Math.round((chicagoDate.getTime() - nowMs) / 60000));
           predictions.push({
-            route: p.rt,
-            direction: p.rtdir,
-            destination: p.des,
-            eta: chicagoDate.toISOString(),
-            minutes,
-            vehicleId: p.vid,
-            isDelayed: p.dly ?? false,
-            type: "bus",
+            route: p.rt, direction: p.rtdir, destination: p.des,
+            eta: chicagoDate.toISOString(), minutes,
+            vehicleId: p.vid, isDelayed: p.dly ?? false, type: "bus",
           });
         }
       }
@@ -92,16 +81,24 @@ export async function GET(req: NextRequest) {
           const { chicagoDate } = parseTrainTimestamp(e.arrT);
           const minutes = Math.max(0, Math.round((chicagoDate.getTime() - nowMs) / 60000));
           predictions.push({
-            route: e.rt,
-            direction: e.stpDe,
-            destination: e.destNm,
-            eta: chicagoDate.toISOString(),
-            minutes,
-            vehicleId: e.rn,
-            isDelayed: e.isDly === "1",
-            type: "train",
+            route: e.rt, direction: e.stpDe, destination: e.destNm,
+            eta: chicagoDate.toISOString(), minutes,
+            vehicleId: e.rn, isDelayed: e.isDly === "1", type: "train",
           });
         }
+      }
+    } else if (stopType === "metra") {
+      // Proxy to the dedicated Metra predictions API (which handles protobuf)
+      const route = req.nextUrl.searchParams.get("route") || "";
+      const baseUrl = req.nextUrl.origin;
+      const metraRes = await fetch(`${baseUrl}/api/metra-predictions?stpid=${stpid}&route=${route}`);
+      const metraData = await metraRes.json();
+      for (const p of metraData.predictions ?? []) {
+        predictions.push({
+          route: p.route, direction: p.direction, destination: p.destination,
+          eta: "", minutes: p.minutes,
+          vehicleId: p.vehicleId || "", isDelayed: p.isDelayed ?? false, type: "metra",
+        });
       }
     }
 

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import type { DbStop } from "@cpt/shared";
-import { TRAIN_LINES } from "@cpt/shared";
+import { TRAIN_LINES, METRA_LINES } from "@cpt/shared";
 import Link from "next/link";
 
 interface Prediction {
@@ -12,7 +12,7 @@ interface Prediction {
   destination: string;
   minutes: number;
   isDelayed: boolean;
-  type: "bus" | "train";
+  type: "bus" | "train" | "metra";
 }
 
 interface StopWithPredictions extends DbStop {
@@ -167,7 +167,9 @@ function StopsList({ stops }: { stops: StopWithPredictions[] }) {
         const lineColor =
           stop.type === "train"
             ? TRAIN_LINES[stop.route_id as keyof typeof TRAIN_LINES]?.color
-            : undefined;
+            : stop.type === "metra"
+              ? METRA_LINES[stop.route_id as keyof typeof METRA_LINES]?.color
+              : undefined;
 
         return (
           <li
@@ -185,7 +187,7 @@ function StopsList({ stops }: { stops: StopWithPredictions[] }) {
                 <div className="min-w-0 flex-1">
                   <p className="font-medium truncate">{stop.name}</p>
                   <p className="text-sm text-muted-foreground">
-                    {stop.type === "train" ? "Train" : "Bus"} &middot; {stop.route_id}
+                    {stop.type === "train" ? "CTA Train" : stop.type === "metra" ? "Metra" : "Bus"} &middot; {stop.route_id}
                   </p>
                 </div>
               </div>
@@ -198,6 +200,8 @@ function StopsList({ stops }: { stops: StopWithPredictions[] }) {
                     const routeColor =
                       p.type === "train"
                         ? (TRAIN_LINES[p.route as keyof typeof TRAIN_LINES]?.color ?? "#888")
+                        : p.type === "metra"
+                          ? (METRA_LINES[p.route as keyof typeof METRA_LINES]?.color ?? "#888")
                         : "#1d4ed8";
                     return (
                       <span

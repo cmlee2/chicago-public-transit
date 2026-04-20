@@ -1,28 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import GtfsRealtimeBindings from "gtfs-realtime-bindings";
+import { createClient } from "@supabase/supabase-js";
 
-const METRA_API_BASE = "https://gtfspublic.metrarr.com/gtfs/public";
-const API_TOKEN = process.env.METRA_API_TOKEN;
-const CHICAGO_TZ = "America/Chicago";
-
-function chicagoNow(): Date {
-  return new Date(new Date().toLocaleString("en-US", { timeZone: CHICAGO_TZ }));
-}
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function GET(req: NextRequest) {
   const stopId = req.nextUrl.searchParams.get("stpid");
-  if (!stopId || !API_TOKEN) {
+  const routeId = req.nextUrl.searchParams.get("route");
+  if (!stopId) {
     return NextResponse.json({ predictions: [], alerts: [] });
   }
 
   try {
-    // Fetch trip updates
-    const res = await fetch(`${METRA_API_BASE}/tripupdates?api_token=${API_TOKEN}`);
-    if (!res.ok) return NextResponse.json({ predictions: [], alerts: [] });
-    const buffer = await res.arrayBuffer();
-    const feed = GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(new Uint8Array(buffer));
-
-    const nowMs = chicagoNow().getTime();
+    // Get Metra vehicles on this route to show as "predictions"
+    // Since Metra doesn't have a simple stop-level prediction API like CTA,
+    // we show vehicles currently on the line heading toward this stop
     const predictions: Array<{
       route: string;
       direction: string;
@@ -31,66 +24,47 @@ export async function GET(req: NextRequest) {
       vehicleId: string;
       isDelayed: boolean;
       type: "metra";
-      stopName: string;
     }> = [];
 
-    for (const entity of feed.entity) {
-      const tu = entity.tripUpdate;
-      if (!tu?.stopTimeUpdate || !tu.trip) continue;
+    if (routeId) {
+      const { data: vehicles } = await supabase
+        .from("vehicles")
+        .select("*")
+        .eq("type", "metra")
+        .eq("route", routeId)
+        .order("updated_at", { ascending: false })
+        .limit(10);
 
-      for (const stu of tu.stopTimeUpdate) {
-        if (stu.stopId !== stopId) continue;
-
-        const arrivalTime = stu.arrival?.time || stu.departure?.time;
-        if (!arrivalTime) continue;
-
-        const etaMs = Number(arrivalTime) * 1000;
-        const minutes = Math.max(0, Math.round((etaMs - nowMs) / 60000));
-
-        // Skip arrivals more than 2 hours away or already passed
-        if (minutes > 120 || etaMs < nowMs - 60000) continue;
-
-        const delay = stu.arrival?.delay || stu.departure?.delay || 0;
-
-        predictions.push({
-          route: tu.trip.routeId || "",
-          direction: tu.trip.directionId === 0 ? "Outbound" : "Inbound",
-          destination: tu.trip.tripId?.split("_")[1] || "",
-          minutes,
-          vehicleId: tu.vehicle?.id || "",
-          isDelayed: delay > 300, // > 5 min delay
-          type: "metra",
-          stopName: stopId,
-        });
+      if (vehicles) {
+        for (const v of vehicles) {
+          predictions.push({
+            route: v.route,
+            direction: v.destination || "En Route",
+            destination: v.destination || routeId,
+            minutes: -1, // indicates "active on line" rather than specific ETA
+            vehicleId: v.vehicle_id.replace("metra-", ""),
+            isDelayed: v.is_delayed,
+            type: "metra",
+          });
+        }
       }
     }
 
-    predictions.sort((a, b) => a.minutes - b.minutes);
-
-    // Also fetch alerts for this stop's route
-    const alertRes = await fetch(`${METRA_API_BASE}/alerts?api_token=${API_TOKEN}`);
-    const alertBuffer = await alertRes.arrayBuffer();
-    const alertFeed = GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(new Uint8Array(alertBuffer));
-
+    // Fetch alerts for this route
     const alerts: Array<{ header: string; description: string | null; route: string | null }> = [];
+    const { data: alertData } = await supabase
+      .from("metra_alerts")
+      .select("*")
+      .or(routeId ? `route_id.eq.${routeId},route_id.is.null` : "route_id.is.null");
 
-    // Get route for this stop from predictions, or from query
-    const routeId = req.nextUrl.searchParams.get("route") || predictions[0]?.route;
-
-    for (const entity of alertFeed.entity) {
-      const alert = entity.alert;
-      if (!alert) continue;
-
-      const affectsRoute = alert.informedEntity?.some(
-        (ie) => ie.routeId === routeId || !ie.routeId
-      );
-      if (!affectsRoute) continue;
-
-      alerts.push({
-        header: alert.headerText?.translation?.[0]?.text || "Alert",
-        description: alert.descriptionText?.translation?.[0]?.text || null,
-        route: alert.informedEntity?.[0]?.routeId || null,
-      });
+    if (alertData) {
+      for (const a of alertData) {
+        alerts.push({
+          header: a.header,
+          description: a.description,
+          route: a.route_id,
+        });
+      }
     }
 
     return NextResponse.json({ predictions, alerts });

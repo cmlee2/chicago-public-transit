@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import type { DbStop } from "@cpt/shared";
-import { TRAIN_LINES } from "@cpt/shared";
+import { TRAIN_LINES, METRA_LINES } from "@cpt/shared";
 import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 
@@ -16,7 +16,7 @@ interface Prediction {
   minutes: number;
   vehicleId: string;
   isDelayed: boolean;
-  type: "bus" | "train";
+  type: "bus" | "train" | "metra";
 }
 
 export default function StopDetailPage() {
@@ -109,19 +109,24 @@ export default function StopDetailPage() {
   const lineColor =
     stop.type === "train"
       ? TRAIN_LINES[stop.route_id as keyof typeof TRAIN_LINES]?.color
-      : undefined;
+      : stop.type === "metra"
+        ? METRA_LINES[stop.route_id as keyof typeof METRA_LINES]?.color
+        : undefined;
+
+  function getRouteColor(route: string, type: string) {
+    if (type === "train") return TRAIN_LINES[route as keyof typeof TRAIN_LINES]?.color ?? "#888";
+    if (type === "metra") return METRA_LINES[route as keyof typeof METRA_LINES]?.color ?? "#888";
+    return "#1d4ed8";
+  }
 
   // Group predictions by route for summary
   const routeSummary = new Map<
     string,
-    { route: string; type: "bus" | "train"; color: string; count: number }
+    { route: string; type: string; color: string; count: number }
   >();
   for (const p of predictions) {
     if (!routeSummary.has(p.route)) {
-      const color =
-        p.type === "train"
-          ? (TRAIN_LINES[p.route as keyof typeof TRAIN_LINES]?.color ?? "#888")
-          : "#1d4ed8";
+      const color = getRouteColor(p.route, p.type);
       routeSummary.set(p.route, { route: p.route, type: p.type, color, count: 0 });
     }
     routeSummary.get(p.route)!.count++;
@@ -147,7 +152,7 @@ export default function StopDetailPage() {
           <h1 className="text-2xl font-bold tracking-tight">{stop.name}</h1>
           <div className="flex items-center gap-2 mt-1">
             <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-              {stop.type === "train" ? "Train Station" : "Bus Stop"} · {stop.route_id}
+              {stop.type === "train" ? "CTA Train Station" : stop.type === "metra" ? "Metra Station" : "Bus Stop"} · {stop.route_id}
             </span>
           </div>
         </div>
@@ -164,7 +169,7 @@ export default function StopDetailPage() {
         )}
         {[...routeSummary.values()].map((r) => (
           <span key={r.route} className="route-badge" style={{ backgroundColor: r.color }}>
-            {r.type === "train" ? (TRAIN_LINES[r.route as keyof typeof TRAIN_LINES]?.name ?? r.route) : `Route ${r.route}`}
+            {r.type === "train" ? (TRAIN_LINES[r.route as keyof typeof TRAIN_LINES]?.name ?? r.route) : r.type === "metra" ? (METRA_LINES[r.route as keyof typeof METRA_LINES]?.name ?? r.route) : `Route ${r.route}`}
           </span>
         ))}
       </div>
@@ -193,10 +198,7 @@ export default function StopDetailPage() {
           </div>
           <div className="space-y-1">
             {predictions.map((p, i) => {
-              const routeColor =
-                p.type === "train"
-                  ? (TRAIN_LINES[p.route as keyof typeof TRAIN_LINES]?.color ?? "#888")
-                  : "#1d4ed8";
+              const routeColor = getRouteColor(p.route, p.type);
 
               return (
                 <div key={`${p.vehicleId}-${p.eta}-${i}`}

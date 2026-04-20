@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@clerk/nextjs";
 import type { DbStop } from "@cpt/shared";
-import { TRAIN_LINES } from "@cpt/shared";
+import { TRAIN_LINES, METRA_LINES } from "@cpt/shared";
 import Link from "next/link";
 
 interface Prediction {
@@ -13,7 +13,7 @@ interface Prediction {
   destination: string;
   minutes: number;
   isDelayed: boolean;
-  type: "bus" | "train";
+  type: "bus" | "train" | "metra";
 }
 
 interface FavoriteStop extends DbStop {
@@ -139,7 +139,9 @@ export default function FavoritesPage() {
             const lineColor =
               stop.type === "train"
                 ? TRAIN_LINES[stop.route_id as keyof typeof TRAIN_LINES]?.color
-                : undefined;
+                : stop.type === "metra"
+                  ? METRA_LINES[stop.route_id as keyof typeof METRA_LINES]?.color
+                  : undefined;
 
             return (
               <div key={stop.stop_id} className="transit-card">
@@ -165,7 +167,7 @@ export default function FavoritesPage() {
                         {stop.name}
                       </Link>
                       <p className="text-[11px] text-muted-foreground">
-                        {stop.type === "train" ? "Train" : "Bus"} · {stop.route_id}
+                        {stop.type === "train" ? "CTA Train" : stop.type === "metra" ? "Metra" : "Bus"} · {stop.route_id}
                       </p>
                     </div>
                   </div>
@@ -189,7 +191,9 @@ export default function FavoritesPage() {
                         const routeColor =
                           p.type === "train"
                             ? (TRAIN_LINES[p.route as keyof typeof TRAIN_LINES]?.color ?? "#888")
-                            : "#1d4ed8";
+                            : p.type === "metra"
+                              ? (METRA_LINES[p.route as keyof typeof METRA_LINES]?.color ?? "#888")
+                              : "#1d4ed8";
                         return (
                           <div key={i} className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2 min-w-0">
