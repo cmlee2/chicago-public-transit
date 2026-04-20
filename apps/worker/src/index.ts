@@ -3,7 +3,7 @@ import { pollBusArrivals } from "./cta-bus.js";
 import { pollTrainArrivals } from "./cta-train.js";
 import { pollBusVehicles, pollTrainVehicles, cleanStaleVehicles } from "./vehicles.js";
 import { seedBusStops } from "./seed-bus-stops.js";
-import { pollMetraVehicles, pollMetraAlerts, cleanStaleMetraVehicles } from "./metra.js";
+import { pollMetraVehicles, pollMetraArrivals, pollMetraAlerts, cleanStaleMetraVehicles } from "./metra.js";
 import { checkAndNotify } from "./notify.js";
 import { supabase } from "./supabase.js";
 import {
@@ -136,9 +136,11 @@ cron.schedule("*/3 * * * *", cleanStaleVehicles);
 // Metra polling every 30s (vehicle positions + alerts every 2 min)
 if (process.env.METRA_API_TOKEN) {
   setInterval(pollMetraVehicles, 30_000);
+  setInterval(pollMetraArrivals, 30_000);
   setInterval(pollMetraAlerts, 2 * 60_000);
   cron.schedule("*/5 * * * *", cleanStaleMetraVehicles);
   pollMetraVehicles();
+  pollMetraArrivals();
   pollMetraAlerts();
   console.log("Metra polling enabled");
 } else {

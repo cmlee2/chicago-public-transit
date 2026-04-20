@@ -13,57 +13,41 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Get Metra vehicles on this route to show as "predictions"
-    // Since Metra doesn't have a simple stop-level prediction API like CTA,
-    // we show vehicles currently on the line heading toward this stop
-    const predictions: Array<{
-      route: string;
-      direction: string;
-      destination: string;
-      minutes: number;
-      vehicleId: string;
-      isDelayed: boolean;
-      type: "metra";
-    }> = [];
+    // Query arrivals table (populated by worker from GTFS-RT trip updates)
+    const now = new Date().toISOString();
+    const { data: arrivals } = await supabase
+      .from("arrivals")
+      .select("*")
+      .eq("stop_id", stopId)
+      .gte("eta", now)
+      .order("eta", { ascending: true })
+      .limit(15);
 
-    if (routeId) {
-      const { data: vehicles } = await supabase
-        .from("vehicles")
-        .select("*")
-        .eq("type", "metra")
-        .eq("route", routeId)
-        .order("updated_at", { ascending: false })
-        .limit(10);
-
-      if (vehicles) {
-        for (const v of vehicles) {
-          predictions.push({
-            route: v.route,
-            direction: v.destination || "En Route",
-            destination: v.destination || routeId,
-            minutes: -1, // indicates "active on line" rather than specific ETA
-            vehicleId: v.vehicle_id.replace("metra-", ""),
-            isDelayed: v.is_delayed,
-            type: "metra",
-          });
-        }
-      }
-    }
+    const predictions = (arrivals ?? []).map((a) => {
+      const minutes = Math.max(0, Math.round((new Date(a.eta).getTime() - Date.now()) / 60000));
+      return {
+        route: a.route,
+        direction: a.direction,
+        destination: a.direction,
+        minutes,
+        vehicleId: a.vehicle_id || "",
+        isDelayed: a.is_delayed,
+        type: "metra" as const,
+      };
+    });
 
     // Fetch alerts for this route
     const alerts: Array<{ header: string; description: string | null; route: string | null }> = [];
-    const { data: alertData } = await supabase
-      .from("metra_alerts")
-      .select("*")
-      .or(routeId ? `route_id.eq.${routeId},route_id.is.null` : "route_id.is.null");
+    if (routeId) {
+      const { data: alertData } = await supabase
+        .from("metra_alerts")
+        .select("*")
+        .or(`route_id.eq.${routeId},route_id.is.null`);
 
-    if (alertData) {
-      for (const a of alertData) {
-        alerts.push({
-          header: a.header,
-          description: a.description,
-          route: a.route_id,
-        });
+      if (alertData) {
+        for (const a of alertData) {
+          alerts.push({ header: a.header, description: a.description, route: a.route_id });
+        }
       }
     }
 

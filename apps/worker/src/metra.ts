@@ -66,6 +66,72 @@ export async function pollMetraVehicles() {
   }
 }
 
+// ─── Trip Updates → Arrivals ─────────────────────────────────────
+
+export async function pollMetraArrivals() {
+  try {
+    const feed = await fetchProtobuf("tripupdates");
+    const rows: Array<{
+      id: string;
+      stop_id: string;
+      route: string;
+      direction: string;
+      eta: string;
+      vehicle_id: string | null;
+      is_delayed: boolean;
+      updated_at: string;
+    }> = [];
+
+    const now = Date.now();
+
+    for (const entity of feed.entity) {
+      const tu = entity.tripUpdate;
+      if (!tu?.stopTimeUpdate || !tu.trip) continue;
+
+      const routeId = tu.trip.routeId || "";
+      const tripId = tu.trip.tripId || "";
+      const vehicleId = tu.vehicle?.id || null;
+      const direction = tu.trip.directionId === 0 ? "Outbound" : "Inbound";
+
+      for (const stu of tu.stopTimeUpdate) {
+        const arrivalTime = stu.arrival?.time || stu.departure?.time;
+        if (!arrivalTime || !stu.stopId) continue;
+
+        const etaMs = Number(arrivalTime) * 1000;
+        // Skip past arrivals and far-future ones
+        if (etaMs < now - 60_000 || etaMs > now + 3 * 60 * 60_000) continue;
+
+        const delay = Number(stu.arrival?.delay || stu.departure?.delay || 0);
+
+        rows.push({
+          id: `metra-${tripId}-${stu.stopId}`,
+          stop_id: stu.stopId,
+          route: routeId,
+          direction,
+          eta: new Date(etaMs).toISOString(),
+          vehicle_id: vehicleId,
+          is_delayed: delay > 300,
+          updated_at: new Date().toISOString(),
+        });
+      }
+    }
+
+    if (rows.length > 0) {
+      // Upsert in batches
+      for (let i = 0; i < rows.length; i += 500) {
+        const batch = rows.slice(i, i + 500);
+        const { error } = await supabase.from("arrivals").upsert(batch, {
+          onConflict: "id",
+        });
+        if (error) console.error("Metra arrival upsert error:", error.message);
+      }
+      console.log(`Upserted ${rows.length} Metra arrival predictions`);
+    }
+  } catch (err) {
+    console.error("Metra arrivals polling error:", err);
+  }
+}
+
 // ─── Service Alerts ─────────────────────────────────────────────
 
 export async function pollMetraAlerts() {
