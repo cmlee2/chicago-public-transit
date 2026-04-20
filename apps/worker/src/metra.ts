@@ -68,6 +68,9 @@ export async function pollMetraVehicles() {
 
 // ─── Trip Updates → Arrivals ─────────────────────────────────────
 
+// Downtown terminals — trains ending here are "Inbound"
+const DOWNTOWN_TERMINALS = new Set(["CUS", "OTC", "MILLENNIUM", "LSS"]);
+
 export async function pollMetraArrivals() {
   try {
     const feed = await fetchProtobuf("tripupdates");
@@ -91,15 +94,21 @@ export async function pollMetraArrivals() {
       const routeId = tu.trip.routeId || "";
       const tripId = tu.trip.tripId || "";
       const vehicleId = tu.vehicle?.id || null;
-      const direction = tu.trip.directionId === 0 ? "Outbound" : "Inbound";
+
+      // Determine direction by checking the last stop — if it's a downtown
+      // terminal, the train is inbound (heading to Chicago)
+      const lastStop = tu.stopTimeUpdate[tu.stopTimeUpdate.length - 1];
+      const lastStopId = lastStop?.stopId || "";
+      const isInbound = DOWNTOWN_TERMINALS.has(lastStopId);
+      const direction = isInbound ? "Inbound" : "Outbound";
 
       for (const stu of tu.stopTimeUpdate) {
         const arrivalTime = stu.arrival?.time || stu.departure?.time;
         if (!arrivalTime || !stu.stopId) continue;
 
         const etaMs = Number(arrivalTime) * 1000;
-        // Skip past arrivals and far-future ones
-        if (etaMs < now - 60_000 || etaMs > now + 3 * 60 * 60_000) continue;
+        // Keep arrivals up to 6 hours out for full schedule view
+        if (etaMs < now - 60_000 || etaMs > now + 6 * 60 * 60_000) continue;
 
         const delay = Number(stu.arrival?.delay || stu.departure?.delay || 0);
 

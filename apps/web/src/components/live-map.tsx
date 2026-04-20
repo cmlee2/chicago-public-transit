@@ -477,7 +477,42 @@ export default function LiveMap() {
           direction: "", destination: vehicle.destination ?? "", stops: [],
         });
       }
+    } else if (vehicle.type === "metra") {
+      // Metra train — fetch upcoming stops from arrivals table
+      const metraColor = METRA_LINES[vehicle.route as MetraLineId]?.color ?? "#888";
+      setActiveVehicleRoute({ route: vehicle.route, type: "bus", patterns: [], color: metraColor });
+      try {
+        // Find arrivals for this vehicle's trip (vehicle_id in arrivals table)
+        const vid = vehicle.vehicle_id.replace("metra-", "");
+        const { data: arrivals } = await supabase
+          .from("arrivals")
+          .select("*")
+          .eq("vehicle_id", vid)
+          .gte("eta", new Date().toISOString())
+          .order("eta", { ascending: true })
+          .limit(15);
+        const stops: VehicleStopPrediction[] = (arrivals ?? []).map((a) => ({
+          stopName: a.stop_id,
+          stopId: a.stop_id,
+          route: a.route,
+          direction: a.direction,
+          destination: a.direction,
+          minutes: Math.max(0, Math.round((new Date(a.eta).getTime() - Date.now()) / 60000)),
+          delayed: a.is_delayed,
+        }));
+        setSelectedVehicle({
+          vehicleId: vehicle.vehicle_id, type: "bus", route: vehicle.route,
+          direction: stops[0]?.direction ?? "", destination: vehicle.destination ?? "",
+          stops,
+        });
+      } catch {
+        setSelectedVehicle({
+          vehicleId: vehicle.vehicle_id, type: "bus", route: vehicle.route,
+          direction: "", destination: vehicle.destination ?? "", stops: [],
+        });
+      }
     } else {
+      // CTA train
       const lineColor = TRAIN_LINES[vehicle.route as TrainLineId]?.color ?? "#888";
       const allGeo = await fetchTrainLineGeometry();
       const segments = getTrainLineSegments(allGeo, vehicle.route);

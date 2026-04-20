@@ -15,13 +15,18 @@ export async function GET(req: NextRequest) {
   try {
     // Query arrivals table (populated by worker from GTFS-RT trip updates)
     const now = new Date().toISOString();
-    const { data: arrivals } = await supabase
+    let query = supabase
       .from("arrivals")
       .select("*")
       .eq("stop_id", stopId)
       .gte("eta", now)
       .order("eta", { ascending: true })
-      .limit(15);
+      .limit(25);
+    // Filter by route if given (arrivals table has CTA + Metra, the id prefix distinguishes)
+    if (routeId) {
+      query = query.eq("route", routeId);
+    }
+    const { data: arrivals } = await query;
 
     const predictions = (arrivals ?? []).map((a) => {
       const minutes = Math.max(0, Math.round((new Date(a.eta).getTime() - Date.now()) / 60000));

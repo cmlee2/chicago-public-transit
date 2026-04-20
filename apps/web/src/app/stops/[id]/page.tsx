@@ -45,7 +45,7 @@ export default function StopDetailPage() {
     if (!stop) return;
     try {
       const res = await fetch(
-        `/api/stop-predictions?stpid=${id}&type=${stop.type}`
+        `/api/stop-predictions?stpid=${id}&type=${stop.type}&route=${stop.route_id}`
       );
       const data = await res.json();
       if (data.predictions) {
