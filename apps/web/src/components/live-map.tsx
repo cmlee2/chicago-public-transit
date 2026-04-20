@@ -654,13 +654,18 @@ export default function LiveMap() {
           })
         )}
 
-        {/* ── Active stop route highlights ── */}
-        {activeStop?.routePatterns.map((rp) =>
-          rp.patterns.map((pattern, i) => (
-            <Polyline key={`sr-${rp.route}-${pattern.pid}-${i}`}
-              positions={pattern.points.map((p) => [p.lat, p.lng] as [number, number])}
-              pathOptions={{ color: rp.color, weight: 5, opacity: 0.9 }} />
-          ))
+        {/* ── Active stop route highlights (parallel when multiple) ── */}
+        {activeStop?.routePatterns.map((rp, rpIdx) =>
+          rp.patterns.map((pattern, i) => {
+            const coords = pattern.points.map((p) => [p.lat, p.lng] as [number, number]);
+            const totalRoutes = activeStop.routePatterns.length;
+            const positions = totalRoutes > 1 ? offsetPolyline(coords, rpIdx, totalRoutes) : coords;
+            return (
+              <Polyline key={`sr-${rp.route}-${pattern.pid}-${i}`}
+                positions={positions}
+                pathOptions={{ color: rp.color, weight: totalRoutes > 1 ? 4 : 5, opacity: 0.9 }} />
+            );
+          })
         )}
 
         {/* ── Active vehicle route ── */}
