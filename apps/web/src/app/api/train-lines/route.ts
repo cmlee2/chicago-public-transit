@@ -20,15 +20,15 @@ const LEGEND_MAP: Record<string, { lineId: string; color: string }> = {
 //   Brown: full outer loop (CCW) - north→west→south→east
 //   Purple: full outer loop (CCW) - same as Brown
 //   Orange: full inner loop (CW) - enters south, north→east→south→west
-//   Green: enters west at Clinton, north side, east side, exits south
-//   Pink: enters west at Clinton, north side, east side, exits south
+//   Green: enters west at Clinton, north side, east side, exits south (NO south/west sides)
+//   Pink: enters west at Clinton, full inner loop (CW) like Orange
 //
 // So:
 //   North (Lake St) + East (Wabash): ALL 5 = Brn, G, Org, Pink, P
-//   South (Van Buren) + West (Wells): ONLY 3 = Brn, Org, P
+//   South (Van Buren) + West (Wells): 4 = Brn, Org, Pink, P (no Green)
 //   West approach from Clinton: G, Pink
 //   North approach from Merch Mart: Brn, P
-//   South exit toward Roosevelt: G, Org (separate from Loop)
+//   South exit (below east side): G only (Green exits south toward Roosevelt)
 
 interface LineInfo { lineId: string; color: string }
 
@@ -40,9 +40,11 @@ const ALL_FIVE: LineInfo[] = [
   { lineId: "P", color: "#522398" },
 ];
 
-const LOOP_ONLY_THREE: LineInfo[] = [
+// South + West sides: all except Green (Green exits after east side)
+const LOOP_FOUR: LineInfo[] = [
   { lineId: "Brn", color: "#62361b" },
   { lineId: "Org", color: "#f9461c" },
+  { lineId: "Pink", color: "#e27ea6" },
   { lineId: "P", color: "#522398" },
 ];
 
@@ -56,9 +58,8 @@ const WEST_APPROACH: LineInfo[] = [
   { lineId: "Pink", color: "#e27ea6" },
 ];
 
-const GREEN_PINK_SOUTH_EXIT: LineInfo[] = [
+const GREEN_SOUTH_EXIT: LineInfo[] = [
   { lineId: "G", color: "#009b3a" },
-  { lineId: "Pink", color: "#e27ea6" },
 ];
 
 const GREEN_ORANGE_SOUTH: LineInfo[] = [
@@ -96,10 +97,10 @@ function classifyMLSegment(coords: [number, number][]): LineInfo[] {
         return GREEN_ORANGE_SOUTH;
       }
       // Between Loop and Roosevelt = Green + Pink exit
-      return GREEN_PINK_SOUTH_EXIT;
+      return GREEN_SOUTH_EXIT;
     }
     // Horizontal or west segments south of Loop
-    return LOOP_ONLY_THREE;
+    return LOOP_FOUR;
   }
 
   // ── The Loop rectangle itself (lat 41.876-41.886, lng -87.634 to -87.626) ──
@@ -116,12 +117,12 @@ function classifyMLSegment(coords: [number, number][]): LineInfo[] {
 
   // South side: horizontal, lat < 41.878
   if (!isVertical && avgLat < 41.878) {
-    return LOOP_ONLY_THREE;
+    return LOOP_FOUR;
   }
 
   // West side: vertical, lng < -87.632, within Loop latitude range
   if (isVertical && avgLng < -87.632 && minLat >= 41.876) {
-    return LOOP_ONLY_THREE;
+    return LOOP_FOUR;
   }
 
   // Fallback for ambiguous segments in the middle of the Loop
