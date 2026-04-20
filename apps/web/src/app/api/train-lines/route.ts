@@ -32,19 +32,20 @@ const LEGEND_MAP: Record<string, { lineId: string; color: string }> = {
 
 interface LineInfo { lineId: string; color: string }
 
+// Ordered light-dark-light-dark for max visibility when side-by-side
 const ALL_FIVE: LineInfo[] = [
+  { lineId: "Pink", color: "#e27ea6" },
   { lineId: "Brn", color: "#62361b" },
   { lineId: "G", color: "#009b3a" },
   { lineId: "Org", color: "#f9461c" },
-  { lineId: "Pink", color: "#e27ea6" },
   { lineId: "P", color: "#522398" },
 ];
 
 // South + West sides: all except Green (Green exits after east side)
 const LOOP_FOUR: LineInfo[] = [
+  { lineId: "Pink", color: "#e27ea6" },
   { lineId: "Brn", color: "#62361b" },
   { lineId: "Org", color: "#f9461c" },
-  { lineId: "Pink", color: "#e27ea6" },
   { lineId: "P", color: "#522398" },
 ];
 

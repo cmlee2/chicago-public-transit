@@ -79,7 +79,7 @@ function offsetPolyline(
 ): [number, number][] {
   if (coords.length < 2) return coords;
   const centerOffset = (totalLines - 1) / 2;
-  const shift = (offsetIndex - centerOffset) * 0.00012;
+  const shift = (offsetIndex - centerOffset) * 0.00018; // ~20m per line
   return coords.map((point, i) => {
     const prev = coords[Math.max(0, i - 1)];
     const next = coords[Math.min(coords.length - 1, i + 1)];
