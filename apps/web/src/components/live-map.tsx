@@ -523,7 +523,7 @@ export default function LiveMap() {
   }
 
   // ─── Map style ───────────────────────────────────────────────
-  const [mapStyle, setMapStyle] = useState<"dark" | "light" | "satellite" | "transit">("dark");
+  const [mapStyle, setMapStyle] = useState<"dark" | "light" | "satellite">("dark");
 
   const TILE_LAYERS = {
     dark: {
@@ -537,10 +537,6 @@ export default function LiveMap() {
     satellite: {
       url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       attribution: '&copy; Esri',
-    },
-    transit: {
-      url: "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
     },
   };
 
@@ -634,8 +630,8 @@ export default function LiveMap() {
               <Polyline key={`tl-${segment.lineId}-${segment.shared ? "s" : "o"}-${i}`} positions={positions}
                 pathOptions={{
                   color: segment.color,
-                  weight: mapStyle === "transit" ? (segment.shared ? 4 : 5) : (segment.shared ? 2.5 : 3),
-                  opacity: mapStyle === "transit" ? 0.9 : 0.6,
+                  weight: segment.shared ? 4 : 5,
+                  opacity: 0.85,
                 }} />
             );
           })
@@ -768,14 +764,14 @@ export default function LiveMap() {
         <div className="map-control p-2">
           <p className="text-[9px] font-bold tracking-[0.15em] text-white/40 uppercase mb-1.5 px-1">Map Style</p>
           <div className="flex gap-1">
-            {(["dark", "light", "satellite", "transit"] as const).map((style) => (
+            {(["dark", "light", "satellite"] as const).map((style) => (
               <button key={style} onClick={() => setMapStyle(style)}
-                className={`px-2 py-1 text-[10px] font-semibold tracking-wide uppercase rounded transition-all ${
+                className={`px-2.5 py-1 text-[10px] font-semibold tracking-wide uppercase rounded transition-all ${
                   mapStyle === style
                     ? "bg-[#00a1de] text-white shadow-[0_0_8px_rgba(0,161,222,0.4)]"
                     : "text-white/50 hover:text-white hover:bg-white/10"
                 }`}>
-                {style === "transit" ? "Tube" : style}
+                {style}
               </button>
             ))}
           </div>
