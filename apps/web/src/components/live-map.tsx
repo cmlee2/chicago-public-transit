@@ -185,23 +185,39 @@ function DynamicTileLayer({ url, attribution }: { url: string; attribution: stri
   return null;
 }
 
+// ─── Mobile Detection ───────────────────────────────────────────
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+  return isMobile;
+}
+
 // ─── Map Setup ──────────────────────────────────────────────────
 
 function MapSetup({
   onBoundsChange,
   userLocation,
+  isMobile,
 }: {
   onBoundsChange: (bounds: L.LatLngBounds) => void;
   userLocation: [number, number] | null;
+  isMobile: boolean;
 }) {
   const map = useMap();
   const hasCentered = useRef(false);
   useEffect(() => {
     if (userLocation && !hasCentered.current) {
-      map.setView(userLocation, 14);
+      // Zoom in tighter on mobile for neighborhood view
+      map.setView(userLocation, isMobile ? 15 : 14);
       hasCentered.current = true;
     }
-  }, [userLocation, map]);
+  }, [userLocation, map, isMobile]);
   useEffect(() => { onBoundsChange(map.getBounds()); }, [map, onBoundsChange]);
   useMapEvents({ moveend: () => onBoundsChange(map.getBounds()) });
   return null;
@@ -272,6 +288,7 @@ export default function LiveMap() {
   const [loadingStop, setLoadingStop] = useState(false);
   const [trainLineGeo, setTrainLineGeo] = useState<TrainLineSegment[]>([]);
   const [favoriteStopIds, setFavoriteStopIds] = useState<Set<string>>(new Set());
+  const isMobile = useIsMobile();
   const { userId } = useAuth();
   const vehicleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -619,7 +636,7 @@ export default function LiveMap() {
     <div className="relative h-full w-full">
       <MapContainer center={center} zoom={13} className="h-full w-full" zoomControl={false}>
         <DynamicTileLayer url={currentTile.url} attribution={currentTile.attribution} />
-        <MapSetup onBoundsChange={handleBoundsChange} userLocation={userLocation} />
+        <MapSetup onBoundsChange={handleBoundsChange} userLocation={userLocation} isMobile={isMobile} />
 
         {/* ── Train lines — rainbow parallel for shared segments ── */}
         {showTrains && trainLineGeo.map((segment) =>
@@ -669,19 +686,21 @@ export default function LiveMap() {
               icon={createTrainStationIcon(station.lines, isActive)}
               zIndexOffset={100}
               eventHandlers={{ click: () => handleTrainStationClick(station) }}>
-              <Popup>{isActive && activeStop ? renderPredictions(activeStop) : (
-                <div className="text-xs">
-                  <p className="font-bold text-sm">{station.name}</p>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {station.lines.map((l) => (
-                      <span key={l.lineId} className="rounded px-1.5 py-0.5 text-white text-[10px] font-bold" style={{ backgroundColor: l.color }}>
-                        {TRAIN_LINES[l.lineId as TrainLineId]?.name ?? l.lineId}
-                      </span>
-                    ))}
+              {!isMobile && (
+                <Popup>{isActive && activeStop ? renderPredictions(activeStop) : (
+                  <div className="text-xs">
+                    <p className="font-bold text-sm">{station.name}</p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {station.lines.map((l) => (
+                        <span key={l.lineId} className="rounded px-1.5 py-0.5 text-white text-[10px] font-bold" style={{ backgroundColor: l.color }}>
+                          {TRAIN_LINES[l.lineId as TrainLineId]?.name ?? l.lineId}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="mt-1 text-gray-400 text-[11px]">Click to see arrivals</p>
                   </div>
-                  <p className="mt-1 text-gray-400 text-[11px]">Click to see arrivals</p>
-                </div>
-              )}</Popup>
+                )}</Popup>
+              )}
             </Marker>
           );
         })}
@@ -693,13 +712,15 @@ export default function LiveMap() {
             <Marker key={stop.stop_id} position={[stop.lat, stop.lng]}
               icon={createBusStopIcon(isActive)}
               eventHandlers={{ click: () => handleBusStopClick(stop) }}>
-              <Popup>{isActive && activeStop ? renderPredictions(activeStop) : (
-                <div className="text-xs">
-                  <p className="font-semibold text-sm">{stop.name}</p>
-                  <p className="text-gray-500">Bus · {stop.route_id}</p>
-                  <p className="mt-1 text-gray-400 text-[11px]">Click to see arrivals</p>
-                </div>
-              )}</Popup>
+              {!isMobile && (
+                <Popup>{isActive && activeStop ? renderPredictions(activeStop) : (
+                  <div className="text-xs">
+                    <p className="font-semibold text-sm">{stop.name}</p>
+                    <p className="text-gray-500">Bus · {stop.route_id}</p>
+                    <p className="mt-1 text-gray-400 text-[11px]">Click to see arrivals</p>
+                  </div>
+                )}</Popup>
+              )}
             </Marker>
           );
         })}
@@ -711,73 +732,65 @@ export default function LiveMap() {
           const icon = v.type === "train"
             ? createTrainVehicleIcon(TRAIN_LINES[v.route as TrainLineId]?.color ?? "#888", isActive)
             : createBusVehicleIcon(isActive);
-          const routeColor = v.type === "train" ? (TRAIN_LINES[v.route as TrainLineId]?.color ?? "#888") : "#1d4ed8";
           return (
             <Marker key={`${v.type}-${v.vehicle_id}`} position={[v.lat, v.lng]} icon={icon}
               eventHandlers={{ click: () => handleVehicleClick(v) }}>
-              <Popup>
-                <div className="text-xs min-w-[200px]">
-                  <div className="flex items-center gap-2">
-                    <span className="rounded px-1.5 py-0.5 text-white text-[10px] font-bold" style={{ backgroundColor: routeColor }}>
-                      {v.route}
-                    </span>
-                    <p className="font-bold text-sm">
-                      {v.type === "train" ? (TRAIN_LINES[v.route as TrainLineId]?.name ?? v.route) : `Bus ${v.route}`}
-                    </p>
-                  </div>
-                  <p className="text-gray-500 mt-0.5">
-                    #{v.vehicle_id} → {v.destination}
-                    {isSelected && selectedVehicle.direction && (
-                      <span className="ml-1 font-medium text-gray-700">({selectedVehicle.direction})</span>
-                    )}
-                  </p>
-                  {v.is_delayed && <p className="text-red-500 font-medium">Delayed</p>}
-
-                  {/* Upcoming stops for this vehicle */}
-                  {isSelected && selectedVehicle.stops.length > 0 && (
-                    <div className="mt-2 border-t pt-2">
-                      <p className="font-semibold text-gray-700 mb-1 text-[11px]">Upcoming stops:</p>
-                      <div className="space-y-1">
-                        {selectedVehicle.stops.map((s, i) => (
-                          <div key={i} className="flex items-center justify-between gap-2">
-                            <span className="text-gray-600 truncate text-[11px]">{s.stopName}</span>
-                            <span className={`font-bold text-[11px] shrink-0 ${
-                              s.minutes <= 1 ? "text-green-600" : s.minutes <= 5 ? "text-yellow-600" : "text-gray-800"
-                            }`}>
-                              {s.minutes === 0 ? "Due" : `${s.minutes}m`}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
+              {!isMobile && (
+                <Popup>
+                  <div className="text-xs min-w-[200px]">
+                    <div className="flex items-center gap-2">
+                      <span className="rounded px-1.5 py-0.5 text-white text-[10px] font-bold" style={{ backgroundColor: v.type === "train" ? (TRAIN_LINES[v.route as TrainLineId]?.color ?? "#888") : "#1d4ed8" }}>
+                        {v.route}
+                      </span>
+                      <p className="font-bold text-sm">
+                        {v.type === "train" ? (TRAIN_LINES[v.route as TrainLineId]?.name ?? v.route) : `Bus ${v.route}`}
+                      </p>
                     </div>
-                  )}
-                </div>
-              </Popup>
+                    <p className="text-gray-500 mt-0.5">
+                      #{v.vehicle_id} → {v.destination}
+                      {isSelected && selectedVehicle.direction && (
+                        <span className="ml-1 font-medium text-gray-700">({selectedVehicle.direction})</span>
+                      )}
+                    </p>
+                    {v.is_delayed && <p className="text-red-500 font-medium">Delayed</p>}
+                    {isSelected && selectedVehicle.stops.length > 0 && (
+                      <div className="mt-2 border-t pt-2">
+                        <p className="font-semibold text-gray-700 mb-1 text-[11px]">Upcoming stops:</p>
+                        <div className="space-y-1">
+                          {selectedVehicle.stops.map((s, i) => (
+                            <div key={i} className="flex items-center justify-between gap-2">
+                              <span className="text-gray-600 truncate text-[11px]">{s.stopName}</span>
+                              <span className={`font-bold text-[11px] shrink-0 ${
+                                s.minutes <= 1 ? "text-green-600" : s.minutes <= 5 ? "text-yellow-600" : "text-gray-800"
+                              }`}>
+                                {s.minutes === 0 ? "Due" : `${s.minutes}m`}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Popup>
+              )}
             </Marker>
           );
         })}
       </MapContainer>
 
-      {/* ── Controls ── */}
-      <div className="absolute top-3 right-3 z-[1000] flex flex-col gap-2">
-        {/* Map style switcher */}
+      {/* ── Desktop Controls ── */}
+      <div className="hidden md:flex absolute top-3 right-3 z-[1000] flex-col gap-2">
         <div className="map-control p-2">
           <p className="text-[9px] font-bold tracking-[0.15em] text-white/40 uppercase mb-1.5 px-1">Map Style</p>
           <div className="flex gap-1">
             {(["dark", "light", "satellite"] as const).map((style) => (
               <button key={style} onClick={() => setMapStyle(style)}
                 className={`px-2.5 py-1 text-[10px] font-semibold tracking-wide uppercase rounded transition-all ${
-                  mapStyle === style
-                    ? "bg-[#00a1de] text-white shadow-[0_0_8px_rgba(0,161,222,0.4)]"
-                    : "text-white/50 hover:text-white hover:bg-white/10"
-                }`}>
-                {style}
-              </button>
+                  mapStyle === style ? "bg-[#00a1de] text-white shadow-[0_0_8px_rgba(0,161,222,0.4)]" : "text-white/50 hover:text-white hover:bg-white/10"
+                }`}>{style}</button>
             ))}
           </div>
         </div>
-
-        {/* Layer toggles */}
         <div className="map-control p-3">
           <p className="text-[9px] font-bold tracking-[0.15em] text-white/40 uppercase mb-2">Layers</p>
           {[
@@ -790,56 +803,173 @@ export default function LiveMap() {
               <div className={`w-3 h-3 rounded-sm border-2 flex items-center justify-center transition-colors ${
                 toggle.checked ? "border-transparent" : "border-white/30 group-hover:border-white/50"
               }`} style={toggle.checked ? { backgroundColor: toggle.color } : undefined}>
-                {toggle.checked && (
-                  <svg width="8" height="8" viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2">
-                    <path d="M2 6l3 3 5-5" />
-                  </svg>
-                )}
+                {toggle.checked && <svg width="8" height="8" viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2"><path d="M2 6l3 3 5-5" /></svg>}
               </div>
               <input type="checkbox" checked={toggle.checked} onChange={(e) => toggle.onChange(e.target.checked)} className="sr-only" />
               <span className="text-[11px] font-medium text-white/70 group-hover:text-white transition-colors">{toggle.label}</span>
             </label>
           ))}
         </div>
-
-        {/* Active route/stop info */}
         {activeVehicleRoute && (
           <div className="map-control p-3">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: activeVehicleRoute.color }} />
-                <p className="text-[11px] text-white font-semibold tracking-wide">
-                  {activeVehicleRoute.type === "train" ? TRAIN_LINES[activeVehicleRoute.route as TrainLineId]?.name : `Route ${activeVehicleRoute.route}`}
-                </p>
+                <p className="text-[11px] text-white font-semibold">{activeVehicleRoute.type === "train" ? TRAIN_LINES[activeVehicleRoute.route as TrainLineId]?.name : `Route ${activeVehicleRoute.route}`}</p>
               </div>
-              <button onClick={() => { setActiveVehicleRoute(null); setSelectedVehicle(null); }} className="text-white/30 hover:text-white text-xs transition-colors">✕</button>
+              <button onClick={() => { setActiveVehicleRoute(null); setSelectedVehicle(null); }} className="text-white/30 hover:text-white text-xs">✕</button>
             </div>
           </div>
         )}
-
-        {activeStop && (
+        {activeStop && !isMobile && (
           <div className="map-control p-3 max-w-[220px]">
             <div className="flex items-center justify-between gap-2">
               <p className="text-[11px] text-white font-semibold truncate">{activeStop.name}</p>
-              <button onClick={() => setActiveStop(null)} className="text-white/30 hover:text-white text-xs shrink-0 transition-colors">✕</button>
+              <button onClick={() => setActiveStop(null)} className="text-white/30 hover:text-white text-xs shrink-0">✕</button>
             </div>
             <div className="mt-1.5 flex flex-wrap gap-1">
-              {activeStop.routePatterns.map((rp) => (
-                <span key={rp.route} className="route-badge" style={{ backgroundColor: rp.color }}>{rp.route}</span>
-              ))}
+              {activeStop.routePatterns.map((rp) => (<span key={rp.route} className="route-badge" style={{ backgroundColor: rp.color }}>{rp.route}</span>))}
             </div>
           </div>
         )}
-
-        {/* Status bar */}
         <div className="map-control px-3 py-2 flex items-center gap-2">
           <span className="status-dot live" />
           <p className="text-[10px] text-white/40 font-medium tracking-wide">
-            <span className="departure-board text-white/60">{filteredVehicles.length}</span> vehicles ·{" "}
-            <span className="departure-board text-white/60">{trainStations.length}</span> stations
+            <span className="departure-board text-white/60">{filteredVehicles.length}</span> vehicles · <span className="departure-board text-white/60">{trainStations.length}</span> stations
           </p>
         </div>
       </div>
+
+      {/* ── Mobile Controls (compact top bar) ── */}
+      <div className="md:hidden absolute top-2 right-2 left-2 z-[1000] flex items-center justify-between gap-2">
+        <div className="map-control px-2 py-1.5 flex items-center gap-1.5">
+          <span className="status-dot live" />
+          <span className="text-[10px] text-white/50 font-medium">{filteredVehicles.length} live</span>
+        </div>
+        <div className="map-control flex gap-0.5 p-1">
+          {(["dark", "light", "satellite"] as const).map((style) => (
+            <button key={style} onClick={() => setMapStyle(style)}
+              className={`px-2 py-1 text-[9px] font-bold tracking-wide uppercase rounded ${
+                mapStyle === style ? "bg-[#00a1de] text-white" : "text-white/40"
+              }`}>{style.slice(0, 3)}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Mobile Bottom Sheet ── */}
+      {isMobile && (activeStop || selectedVehicle) && (
+        <div className="absolute bottom-0 left-0 right-0 z-[1000] animate-in slide-in-from-bottom duration-300">
+          {/* Drag handle */}
+          <div className="flex justify-center pt-2 pb-1 bg-[#111827] rounded-t-xl border-t border-x border-border/50">
+            <div className="w-10 h-1 rounded-full bg-white/20" />
+          </div>
+          <div className="bg-[#111827] border-x border-border/50 px-4 pb-4 max-h-[45vh] overflow-y-auto">
+            {/* Close button */}
+            <div className="flex justify-end mb-1">
+              <button onClick={() => { setActiveStop(null); setSelectedVehicle(null); setActiveVehicleRoute(null); }}
+                className="text-white/30 hover:text-white text-xs p-1">✕</button>
+            </div>
+
+            {/* Stop info */}
+            {activeStop && (
+              <div>
+                <p className="font-bold text-base">{activeStop.name}</p>
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {activeStop.routePatterns.map((rp) => (
+                    <span key={rp.route} className="route-badge" style={{ backgroundColor: rp.color }}>
+                      {activeStop.stopType === "train" ? (TRAIN_LINES[rp.route as TrainLineId]?.name ?? rp.route) : `Rt ${rp.route}`}
+                    </span>
+                  ))}
+                </div>
+
+                {activeStop.predictions.length > 0 ? (
+                  <div className="mt-3 space-y-2">
+                    {activeStop.predictions.slice(0, 6).map((p, i) => {
+                      const routeColor = p.type === "train"
+                        ? (TRAIN_LINES[p.route as TrainLineId]?.color ?? "#888")
+                        : (activeStop.routePatterns.find((rp) => rp.route === p.route)?.color ?? "#1d4ed8");
+                      return (
+                        <div key={i} className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="route-badge shrink-0" style={{ backgroundColor: routeColor }}>{p.route}</span>
+                            <span className="text-sm truncate">{p.destination}</span>
+                          </div>
+                          <span className={`arrival-time text-lg shrink-0 ${
+                            p.delayed ? "delayed" : p.minutes <= 1 ? "due" : p.minutes <= 5 ? "soon" : ""
+                          }`}>
+                            {p.minutes === 0 ? "Due" : `${p.minutes}m`}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : loadingStop ? (
+                  <p className="mt-3 text-sm text-muted-foreground">Loading arrivals...</p>
+                ) : (
+                  <p className="mt-3 text-sm text-muted-foreground">No upcoming arrivals</p>
+                )}
+
+                {/* Favorite + details */}
+                <div className="mt-3 flex items-center gap-2">
+                  {userId && (() => {
+                    const sid = activeStop.stopIds[0];
+                    const isFav = favoriteStopIds.has(sid);
+                    return (
+                      <button onClick={() => toggleFavorite(sid)}
+                        className={`rounded px-3 py-1.5 text-xs font-semibold border transition-colors ${
+                          isFav ? "bg-yellow-500/20 border-yellow-500/50 text-yellow-500" : "border-white/20 text-white/50"
+                        }`}>
+                        {isFav ? "★ Favorited" : "☆ Favorite"}
+                      </button>
+                    );
+                  })()}
+                  <Link href={`/stops/${activeStop.stopIds[0]}`}
+                    className="text-xs text-[#00a1de] font-semibold">
+                    Full details →
+                  </Link>
+                </div>
+              </div>
+            )}
+
+            {/* Vehicle info (when no stop is active) */}
+            {!activeStop && selectedVehicle && (
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="route-badge" style={{
+                    backgroundColor: selectedVehicle.type === "train"
+                      ? (TRAIN_LINES[selectedVehicle.route as TrainLineId]?.color ?? "#888") : "#1d4ed8"
+                  }}>{selectedVehicle.route}</span>
+                  <p className="font-bold text-base">
+                    {selectedVehicle.type === "train"
+                      ? (TRAIN_LINES[selectedVehicle.route as TrainLineId]?.name ?? selectedVehicle.route)
+                      : `Bus ${selectedVehicle.route}`}
+                  </p>
+                </div>
+                <p className="text-sm text-muted-foreground mt-1">
+                  #{selectedVehicle.vehicleId} → {selectedVehicle.destination}
+                  {selectedVehicle.direction && <span className="ml-1">({selectedVehicle.direction})</span>}
+                </p>
+
+                {selectedVehicle.stops.length > 0 && (
+                  <div className="mt-3 space-y-1.5">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Upcoming stops</p>
+                    {selectedVehicle.stops.map((s, i) => (
+                      <div key={i} className="flex items-center justify-between gap-3">
+                        <span className="text-sm truncate">{s.stopName}</span>
+                        <span className={`arrival-time text-base shrink-0 ${
+                          s.minutes <= 1 ? "due" : s.minutes <= 5 ? "soon" : ""
+                        }`}>
+                          {s.minutes === 0 ? "Due" : `${s.minutes}m`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
