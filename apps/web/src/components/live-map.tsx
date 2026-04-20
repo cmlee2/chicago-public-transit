@@ -482,17 +482,41 @@ export default function LiveMap() {
       const metraColor = METRA_LINES[vehicle.route as MetraLineId]?.color ?? "#888";
       setActiveVehicleRoute({ route: vehicle.route, type: "bus", patterns: [], color: metraColor });
       try {
-        // Find arrivals for this vehicle's trip (vehicle_id in arrivals table)
+        // The vehicle's destination field stores the full tripId
+        // arrivals have vehicle_id = vehicleId || tripId
         const vid = vehicle.vehicle_id.replace("metra-", "");
-        const { data: arrivals } = await supabase
+        const tripId = vehicle.destination ?? "";
+
+        // Try querying by vehicle_id first, then by tripId
+        let arrivals: Array<{ stop_id: string; route: string; direction: string; eta: string; is_delayed: boolean }> | null = null;
+
+        const { data: byVid } = await supabase
           .from("arrivals")
           .select("*")
           .eq("vehicle_id", vid)
           .gte("eta", new Date().toISOString())
           .order("eta", { ascending: true })
           .limit(15);
+
+        if (byVid && byVid.length > 0) {
+          arrivals = byVid;
+        } else if (tripId) {
+          // Fall back to tripId (stored as vehicle_id when actual vehicle id is null)
+          const { data: byTrip } = await supabase
+            .from("arrivals")
+            .select("*")
+            .eq("vehicle_id", tripId)
+            .gte("eta", new Date().toISOString())
+            .order("eta", { ascending: true })
+            .limit(15);
+          arrivals = byTrip;
+        }
+
+        // Look up stop names from metraStops
+        const stopNameMap = new Map(metraStops.map((s) => [s.stop_id, s.name]));
+
         const stops: VehicleStopPrediction[] = (arrivals ?? []).map((a) => ({
-          stopName: a.stop_id,
+          stopName: stopNameMap.get(a.stop_id) ?? a.stop_id,
           stopId: a.stop_id,
           route: a.route,
           direction: a.direction,

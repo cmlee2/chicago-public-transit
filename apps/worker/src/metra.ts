@@ -41,14 +41,17 @@ export async function pollMetraVehicles() {
       const lng = vp.position.longitude;
       if (!lat || !lng) continue;
 
+      const vid = vp.vehicle?.id || entity.id;
+      const fullTripId = vp.trip.tripId || "";
       rows.push({
-        vehicle_id: `metra-${vp.vehicle?.id || entity.id}`,
+        vehicle_id: `metra-${vid}`,
         route: vp.trip.routeId || "",
         lat,
         lng,
         heading: Math.round(vp.position.bearing || 0),
         type: "metra",
-        destination: vp.trip.tripId?.split("_")[1] || "",
+        // Store "tripId|headsign" so we can query arrivals and show destination
+        destination: `${fullTripId}`,
         is_delayed: false,
         updated_at: new Date().toISOString(),
       });
@@ -102,6 +105,10 @@ export async function pollMetraArrivals() {
       const isInbound = DOWNTOWN_TERMINALS.has(lastStopId);
       const direction = isInbound ? "Inbound" : "Outbound";
 
+      // Use vehicleId if available, otherwise use tripId so we can
+      // query upcoming stops for a specific train
+      const arrivalVehicleId = vehicleId || tripId;
+
       for (const stu of tu.stopTimeUpdate) {
         const arrivalTime = stu.arrival?.time || stu.departure?.time;
         if (!arrivalTime || !stu.stopId) continue;
@@ -118,7 +125,7 @@ export async function pollMetraArrivals() {
           route: routeId,
           direction,
           eta: new Date(etaMs).toISOString(),
-          vehicle_id: vehicleId,
+          vehicle_id: arrivalVehicleId,
           is_delayed: delay > 300,
           updated_at: new Date().toISOString(),
         });

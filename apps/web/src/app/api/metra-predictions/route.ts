@@ -15,14 +15,15 @@ export async function GET(req: NextRequest) {
   try {
     // Query arrivals table (populated by worker from GTFS-RT trip updates)
     const now = new Date().toISOString();
+    // Query Metra arrivals (id starts with "metra-")
     let query = supabase
       .from("arrivals")
       .select("*")
       .eq("stop_id", stopId)
+      .like("id", "metra-%")
       .gte("eta", now)
       .order("eta", { ascending: true })
       .limit(25);
-    // Filter by route if given (arrivals table has CTA + Metra, the id prefix distinguishes)
     if (routeId) {
       query = query.eq("route", routeId);
     }
@@ -30,12 +31,14 @@ export async function GET(req: NextRequest) {
 
     const predictions = (arrivals ?? []).map((a) => {
       const minutes = Math.max(0, Math.round((new Date(a.eta).getTime() - Date.now()) / 60000));
+      // Extract train number from vehicle_id or trip id for display
+      const trainNum = a.vehicle_id ?? "";
       return {
         route: a.route,
         direction: a.direction,
-        destination: a.direction,
+        destination: a.direction === "Inbound" ? "Chicago" : a.route,
         minutes,
-        vehicleId: a.vehicle_id || "",
+        vehicleId: trainNum,
         isDelayed: a.is_delayed,
         type: "metra" as const,
       };
