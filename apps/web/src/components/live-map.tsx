@@ -299,7 +299,7 @@ export default function LiveMap() {
   const [trainStops, setTrainStops] = useState<DbStop[]>([]);
   const [busStopsInView, setBusStopsInView] = useState<DbStop[]>([]);
   const [selectedVehicle, setSelectedVehicle] = useState<{
-    vehicleId: string; type: "bus" | "train"; route: string;
+    vehicleId: string; type: "bus" | "train" | "metra"; route: string;
     direction: string; destination: string; stops: VehicleStopPrediction[];
   } | null>(null);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
@@ -535,13 +535,13 @@ export default function LiveMap() {
           delayed: a.is_delayed,
         }));
         setSelectedVehicle({
-          vehicleId: vehicle.vehicle_id, type: "bus", route: vehicle.route,
+          vehicleId: vehicle.vehicle_id, type: "metra", route: vehicle.route,
           direction: stops[0]?.direction ?? "", destination: vehicle.destination ?? "",
           stops,
         });
       } catch {
         setSelectedVehicle({
-          vehicleId: vehicle.vehicle_id, type: "bus", route: vehicle.route,
+          vehicleId: vehicle.vehicle_id, type: "metra", route: vehicle.route,
           direction: "", destination: vehicle.destination ?? "", stops: [],
         });
       }
@@ -1113,13 +1113,17 @@ export default function LiveMap() {
               <div>
                 <div className="flex items-center gap-2">
                   <span className="route-badge" style={{
-                    backgroundColor: selectedVehicle.type === "train"
-                      ? (TRAIN_LINES[selectedVehicle.route as TrainLineId]?.color ?? "#888") : "#1d4ed8"
+                    backgroundColor: selectedVehicle.type === "metra"
+                      ? (METRA_LINES[selectedVehicle.route as MetraLineId]?.color ?? "#888")
+                      : selectedVehicle.type === "train"
+                        ? (TRAIN_LINES[selectedVehicle.route as TrainLineId]?.color ?? "#888") : "#1d4ed8"
                   }}>{selectedVehicle.route}</span>
                   <p className="font-bold text-base">
-                    {selectedVehicle.type === "train"
-                      ? (TRAIN_LINES[selectedVehicle.route as TrainLineId]?.name ?? selectedVehicle.route)
-                      : `Bus ${selectedVehicle.route}`}
+                    {selectedVehicle.type === "metra"
+                      ? (METRA_LINES[selectedVehicle.route as MetraLineId]?.name ?? selectedVehicle.route)
+                      : selectedVehicle.type === "train"
+                        ? (TRAIN_LINES[selectedVehicle.route as TrainLineId]?.name ?? selectedVehicle.route)
+                        : `Bus ${selectedVehicle.route}`}
                   </p>
                 </div>
                 <p className="text-sm text-muted-foreground mt-1">
