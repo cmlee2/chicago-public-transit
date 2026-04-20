@@ -20,7 +20,7 @@ export async function pollBusArrivals(stopIds: string[]) {
       const stpids = chunk.join(",");
       const url = `${CTA_BUS_API_BASE}/getpredictions?key=${API_KEY}&stpid=${stpids}&format=json`;
       const res = await fetch(url);
-      const data: CtaBusPredictionsResponse = await res.json();
+      const data = (await res.json()) as CtaBusPredictionsResponse;
 
       const predictions = data["bustime-response"].prd;
       if (!predictions) continue;

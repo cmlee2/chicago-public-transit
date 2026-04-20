@@ -14,7 +14,7 @@ export async function pollTrainArrivals(stationIds: string[]) {
     try {
       const url = `${CTA_TRAIN_API_BASE}/ttarrivals.aspx?key=${API_KEY}&mapid=${stationId}&outputType=JSON`;
       const res = await fetch(url);
-      const data: CtaTrainArrivalsResponse = await res.json();
+      const data = (await res.json()) as CtaTrainArrivalsResponse;
 
       if (data.ctatt.errCd !== "0" || !data.ctatt.eta) continue;
 

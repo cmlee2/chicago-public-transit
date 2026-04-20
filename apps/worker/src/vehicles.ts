@@ -45,7 +45,7 @@ export async function pollBusVehicles() {
         const rt = chunk.join(",");
         const url = `${CTA_BUS_API_BASE}/getvehicles?key=${BUS_API_KEY}&rt=${rt}&format=json`;
         const res = await fetch(url);
-        const data: CtaBusVehiclesResponse = await res.json();
+        const data = (await res.json()) as CtaBusVehiclesResponse;
 
         const vehicles = data["bustime-response"].vehicle;
         if (!vehicles) continue;
@@ -103,7 +103,7 @@ export async function pollTrainVehicles() {
       try {
         const url = `${CTA_TRAIN_API_BASE}/ttpositions.aspx?key=${TRAIN_API_KEY}&rt=${line}&outputType=JSON`;
         const res = await fetch(url);
-        const data: CtaTrainPositionsResponse = await res.json();
+        const data = (await res.json()) as CtaTrainPositionsResponse;
 
         if (data.ctatt.errCd !== "0" || !data.ctatt.route) continue;
 
