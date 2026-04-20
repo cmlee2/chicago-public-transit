@@ -21,16 +21,8 @@ COPY packages/shared/tsconfig.json packages/shared/tsconfig.json
 COPY apps/worker/src/ apps/worker/src/
 COPY apps/worker/tsconfig.json apps/worker/tsconfig.json
 
-# Build shared
-RUN cd /app/packages/shared && npx tsc
-
-# Build worker
-RUN cd /app/apps/worker && npx tsc
-
-# Ensure shared dist is directly accessible (bypass pnpm symlink issues)
-RUN mkdir -p /app/apps/worker/node_modules/@cpt/shared/dist && \
-    cp -r /app/packages/shared/dist/* /app/apps/worker/node_modules/@cpt/shared/dist/ && \
-    cp /app/packages/shared/package.json /app/apps/worker/node_modules/@cpt/shared/package.json
+# Build worker (esbuild bundles @cpt/shared inline, no symlink needed)
+RUN pnpm --filter @cpt/worker build
 
 WORKDIR /app/apps/worker
 CMD ["node", "dist/index.js"]
