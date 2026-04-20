@@ -598,20 +598,19 @@ export default function LiveMap() {
           <p className="mt-2 text-gray-400 italic text-[11px]">No upcoming arrivals</p>
         )}
 
-        {/* Favorite buttons */}
-        {userId && (
-          <div className="mt-2 border-t pt-2 flex flex-wrap gap-1">
-            {info.stopIds.map((sid) => {
-              const isFav = favoriteStopIds.has(sid);
-              return (
-                <button key={sid} onClick={(e) => { e.stopPropagation(); toggleFavorite(sid); }}
-                  className={`rounded px-2 py-0.5 text-[10px] font-medium border ${isFav ? "bg-yellow-500/20 border-yellow-500 text-yellow-700" : "border-gray-300 text-gray-500 hover:bg-gray-100"}`}>
-                  {isFav ? "★" : "☆"} {info.stopIds.length > 1 ? sid : "Favorite"}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        {/* Favorite button — one per stop (uses first stop_id for stations) */}
+        {userId && (() => {
+          const sid = info.stopIds[0];
+          const isFav = favoriteStopIds.has(sid);
+          return (
+            <div className="mt-2 border-t pt-2">
+              <button onClick={(e) => { e.stopPropagation(); toggleFavorite(sid); }}
+                className={`rounded px-2.5 py-1 text-[11px] font-semibold border transition-colors ${isFav ? "bg-yellow-500/20 border-yellow-500/50 text-yellow-500" : "border-white/20 text-white/50 hover:border-white/40 hover:text-white/70"}`}>
+                {isFav ? "★ Favorited" : "☆ Favorite this stop"}
+              </button>
+            </div>
+          );
+        })()}
 
         <Link href={`/stops/${info.stopIds[0]}`} className="block mt-2 text-blue-500 underline text-[11px]">
           Full details →
