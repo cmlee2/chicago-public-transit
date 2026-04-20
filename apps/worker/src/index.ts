@@ -41,7 +41,7 @@ async function cacheRoutes() {
       const res = await fetch(
         `http://www.ctabustracker.com/bustime/api/v2/getroutes?key=${busApiKey}&format=json`
       );
-      const data = await res.json();
+      const data = (await res.json()) as { "bustime-response"?: { routes?: Array<{ rt: string; rtnm: string; rtclr: string }> } };
       const routes = data?.["bustime-response"]?.routes;
       if (routes && Array.isArray(routes)) {
         const rows = routes.map(

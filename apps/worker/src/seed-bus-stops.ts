@@ -36,7 +36,7 @@ export async function seedBusStops() {
       const dirRes = await fetch(
         `${CTA_BUS_API_BASE}/getdirections?key=${API_KEY}&rt=${route.route_id}&format=json`
       );
-      const dirData = await dirRes.json();
+      const dirData = (await dirRes.json()) as { "bustime-response"?: { directions?: CtaDirection[] } };
       const directions: CtaDirection[] =
         dirData?.["bustime-response"]?.directions ?? [];
 
@@ -45,7 +45,7 @@ export async function seedBusStops() {
         const stpRes = await fetch(
           `${CTA_BUS_API_BASE}/getstops?key=${API_KEY}&rt=${route.route_id}&dir=${encodeURIComponent(dir.dir)}&format=json`
         );
-        const stpData = await stpRes.json();
+        const stpData = (await stpRes.json()) as { "bustime-response"?: { stops?: CtaStop[] } };
         const stops: CtaStop[] = stpData?.["bustime-response"]?.stops ?? [];
 
         if (stops.length === 0) continue;
