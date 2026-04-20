@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/index.js --external:node-cron --external:@supabase/supabase-js",
     "dev": "tsx watch --env-file=.env.local src/index.ts",
     "start": "node dist/index.js",
     "lint": "tsc --noEmit"
@@ -17,6 +17,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/node-cron": "^3.0.11",
+    "esbuild": "^0.28.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   }
