@@ -303,9 +303,9 @@ export default function LiveMap() {
     direction: string; destination: string; stops: VehicleStopPrediction[];
   } | null>(null);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
-  const [showBuses, setShowBuses] = useState(true);
+  const [showBuses, setShowBuses] = useState(false);
   const [showTrains, setShowTrains] = useState(true);
-  const [showBusStops, setShowBusStops] = useState(true);
+  const [showBusStops, setShowBusStops] = useState(false);
   const [showTrainStops, setShowTrainStops] = useState(true);
   const [showMetra, setShowMetra] = useState(true);
   const [showMetraStops, setShowMetraStops] = useState(true);
@@ -316,6 +316,7 @@ export default function LiveMap() {
   const [activeStop, setActiveStop] = useState<ActiveStopInfo | null>(null);
   const [loadingStop, setLoadingStop] = useState(false);
   const [trainLineGeo, setTrainLineGeo] = useState<TrainLineSegment[]>([]);
+  const [metraLineGeo, setMetraLineGeo] = useState<Array<{ lineId: string; color: string; coordinates: [number, number][][] }>>([]);
   const [favoriteStopIds, setFavoriteStopIds] = useState<Set<string>>(new Set());
   const isMobile = useIsMobile();
   const { userId } = useAuth();
@@ -391,6 +392,11 @@ export default function LiveMap() {
 
   // ─── Load train line geometry ───────────────────────────────
   useEffect(() => { fetchTrainLineGeometry().then(setTrainLineGeo); }, []);
+
+  // ─── Load Metra line geometry ─────────────────────────────
+  useEffect(() => {
+    fetch("/api/metra-lines").then((r) => r.json()).then(setMetraLineGeo).catch(() => {});
+  }, []);
 
   // ─── User location ──────────────────────────────────────────
   useEffect(() => {
@@ -480,7 +486,11 @@ export default function LiveMap() {
     } else if (vehicle.type === "metra") {
       // Metra train — fetch upcoming stops from arrivals table
       const metraColor = METRA_LINES[vehicle.route as MetraLineId]?.color ?? "#888";
-      setActiveVehicleRoute({ route: vehicle.route, type: "bus", patterns: [], color: metraColor });
+      const metraLine = metraLineGeo.find((l) => l.lineId === vehicle.route);
+      const metraPatterns: RoutePattern[] = metraLine
+        ? metraLine.coordinates.map((coords, i) => ({ pid: i, direction: "", points: coords.map(([lat, lng]) => ({ lat, lng, type: "W" })) }))
+        : [];
+      setActiveVehicleRoute({ route: vehicle.route, type: "bus", patterns: metraPatterns, color: metraColor });
       try {
         // The vehicle's destination field stores the full tripId
         // arrivals have vehicle_id = vehicleId || tripId
@@ -649,10 +659,14 @@ export default function LiveMap() {
         })
       );
       const metraColor = METRA_LINES[stop.route_id as MetraLineId]?.color ?? "#888";
+      const metraLine = metraLineGeo.find((l) => l.lineId === stop.route_id);
+      const metraPatterns: RoutePattern[] = metraLine
+        ? metraLine.coordinates.map((coords, i) => ({ pid: i, direction: "", points: coords.map(([lat, lng]) => ({ lat, lng, type: "W" })) }))
+        : [];
       setActiveStop({
         stopIds: [stop.stop_id], name: stop.name, lat: stop.lat, lng: stop.lng,
         stopType: "bus", predictions,
-        routePatterns: [{ route: stop.route_id, color: metraColor, patterns: [] }],
+        routePatterns: [{ route: stop.route_id, color: metraColor, patterns: metraPatterns }],
       });
     } catch {
       setActiveStop({ stopIds: [stop.stop_id], name: stop.name, lat: stop.lat, lng: stop.lng, stopType: "bus", predictions: [], routePatterns: [] });
@@ -774,6 +788,14 @@ export default function LiveMap() {
                 }} />
             );
           })
+        )}
+
+        {/* ── Metra lines ── */}
+        {showMetra && metraLineGeo.map((line) =>
+          line.coordinates.map((coords, i) => (
+            <Polyline key={`ml-${line.lineId}-${i}`} positions={coords}
+              pathOptions={{ color: line.color, weight: 3, opacity: 0.6, dashArray: "8 4" }} />
+          ))
         )}
 
         {/* ── Active stop route highlights (parallel when multiple) ── */}
@@ -950,7 +972,7 @@ export default function LiveMap() {
             { key: "buses", label: "Buses", checked: showBuses, onChange: setShowBuses, color: "#1d4ed8" },
             { key: "trains", label: "CTA Trains", checked: showTrains, onChange: setShowTrains, color: "#c60c30" },
             { key: "busStops", label: "Bus Stops", checked: showBusStops, onChange: setShowBusStops, color: "#6b7280" },
-            { key: "trainStops", label: "CTA Stops", checked: showTrainStops, onChange: setShowTrainStops, color: "#f59e0b" },
+            { key: "trainStops", label: "CTA Train Stops", checked: showTrainStops, onChange: setShowTrainStops, color: "#f59e0b" },
             { key: "metra", label: "Metra Trains", checked: showMetra, onChange: setShowMetra, color: "#f58220" },
             { key: "metraStops", label: "Metra Stops", checked: showMetraStops, onChange: setShowMetraStops, color: "#795427" },
           ].map((toggle) => (
