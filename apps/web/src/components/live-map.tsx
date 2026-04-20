@@ -263,7 +263,8 @@ export default function LiveMap() {
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [showBuses, setShowBuses] = useState(true);
   const [showTrains, setShowTrains] = useState(true);
-  const [showStops, setShowStops] = useState(true);
+  const [showBusStops, setShowBusStops] = useState(true);
+  const [showTrainStops, setShowTrainStops] = useState(true);
   const [activeVehicleRoute, setActiveVehicleRoute] = useState<{
     route: string; type: "bus" | "train"; patterns: RoutePattern[]; color: string;
   } | null>(null);
@@ -666,7 +667,7 @@ export default function LiveMap() {
         )}
 
         {/* ── Train stations (merged, always visible) ── */}
-        {showStops && trainStations.map((station) => {
+        {showTrainStops && trainStations.map((station) => {
           const isActive = activeStop?.stopIds.join() === station.stopIds.join();
           return (
             <Marker key={station.key} position={[station.lat, station.lng]}
@@ -691,7 +692,7 @@ export default function LiveMap() {
         })}
 
         {/* ── Bus stops (viewport) ── */}
-        {showStops && busStopsInView.map((stop) => {
+        {showBusStops && busStopsInView.map((stop) => {
           const isActive = activeStop?.stopIds[0] === stop.stop_id;
           return (
             <Marker key={stop.stop_id} position={[stop.lat, stop.lng]}
@@ -787,7 +788,8 @@ export default function LiveMap() {
           {[
             { key: "buses", label: "Buses", checked: showBuses, onChange: setShowBuses, color: "#1d4ed8" },
             { key: "trains", label: "Trains", checked: showTrains, onChange: setShowTrains, color: "#c60c30" },
-            { key: "stops", label: "Stops", checked: showStops, onChange: setShowStops, color: "#9ca3af" },
+            { key: "busStops", label: "Bus Stops", checked: showBusStops, onChange: setShowBusStops, color: "#6b7280" },
+            { key: "trainStops", label: "Train Stops", checked: showTrainStops, onChange: setShowTrainStops, color: "#f59e0b" },
           ].map((toggle) => (
             <label key={toggle.key} className="flex items-center gap-2 py-0.5 cursor-pointer group">
               <div className={`w-3 h-3 rounded-sm border-2 flex items-center justify-center transition-colors ${
