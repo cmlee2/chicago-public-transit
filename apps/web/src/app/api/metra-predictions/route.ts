@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+function getSupabase() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!supabaseUrl || !supabaseKey) return null;
+  return createClient(supabaseUrl, supabaseKey);
+}
 
 export async function GET(req: NextRequest) {
   const stopId = req.nextUrl.searchParams.get("stpid");
@@ -13,6 +16,11 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const supabase = getSupabase();
+    if (!supabase) {
+      return NextResponse.json({ predictions: [], alerts: [] });
+    }
+
     // Query arrivals table (populated by worker from GTFS-RT trip updates)
     const now = new Date().toISOString();
     // Query Metra arrivals (id starts with "metra-")

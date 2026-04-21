@@ -554,10 +554,23 @@ export default function LiveMap() {
         pid: i, direction: "", points: coords.map(([lat, lng]) => ({ lat, lng, type: "W" })),
       }));
       setActiveVehicleRoute({ route: vehicle.route, type: "train", patterns, color: lineColor });
-      setSelectedVehicle({
-        vehicleId: vehicle.vehicle_id, type: "train", route: vehicle.route,
-        direction: "", destination: vehicle.destination ?? "", stops: [],
-      });
+      try {
+        const res = await fetch(`/api/vehicle-predictions?type=train&vid=${vehicle.vehicle_id}`);
+        const data = await res.json();
+        setSelectedVehicle({
+          vehicleId: vehicle.vehicle_id,
+          type: "train",
+          route: vehicle.route,
+          direction: data.direction ?? "",
+          destination: data.destination ?? vehicle.destination ?? "",
+          stops: data.predictions ?? [],
+        });
+      } catch {
+        setSelectedVehicle({
+          vehicleId: vehicle.vehicle_id, type: "train", route: vehicle.route,
+          direction: "", destination: vehicle.destination ?? "", stops: [],
+        });
+      }
     }
   }
 
