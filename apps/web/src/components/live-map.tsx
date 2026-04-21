@@ -311,7 +311,7 @@ export default function LiveMap() {
   const [showMetraStops, setShowMetraStops] = useState(true);
   const [metraStops, setMetraStops] = useState<DbStop[]>([]);
   const [activeVehicleRoute, setActiveVehicleRoute] = useState<{
-    route: string; type: "bus" | "train"; patterns: RoutePattern[]; color: string;
+    route: string; type: "bus" | "train" | "metra"; patterns: RoutePattern[]; color: string;
   } | null>(null);
   const [activeStop, setActiveStop] = useState<ActiveStopInfo | null>(null);
   const [loadingStop, setLoadingStop] = useState(false);
@@ -475,7 +475,7 @@ export default function LiveMap() {
         setSelectedVehicle({
           vehicleId: vehicle.vehicle_id, type: "bus", route: data.route ?? vehicle.route,
           direction: data.direction ?? "", destination: data.destination ?? vehicle.destination ?? "",
-          stops: data.predictions ?? [],
+          stops: (data.predictions ?? []).slice(0, 5),
         });
       } catch {
         setSelectedVehicle({
@@ -490,7 +490,7 @@ export default function LiveMap() {
       const metraPatterns: RoutePattern[] = metraLine
         ? metraLine.coordinates.map((coords, i) => ({ pid: i, direction: "", points: coords.map(([lat, lng]) => ({ lat, lng, type: "W" })) }))
         : [];
-      setActiveVehicleRoute({ route: vehicle.route, type: "bus", patterns: metraPatterns, color: metraColor });
+      setActiveVehicleRoute({ route: vehicle.route, type: "metra", patterns: metraPatterns, color: metraColor });
       try {
         // The vehicle's destination field stores the full tripId
         // arrivals have vehicle_id = vehicleId || tripId
@@ -533,7 +533,7 @@ export default function LiveMap() {
           destination: a.direction,
           minutes: Math.max(0, Math.round((new Date(a.eta).getTime() - Date.now()) / 60000)),
           delayed: a.is_delayed,
-        }));
+        })).slice(0, 5);
         setSelectedVehicle({
           vehicleId: vehicle.vehicle_id, type: "metra", route: vehicle.route,
           direction: stops[0]?.direction ?? "", destination: vehicle.destination ?? "",
@@ -945,7 +945,7 @@ export default function LiveMap() {
                       <div className="mt-2 border-t pt-2">
                         <p className="font-semibold text-gray-700 mb-1 text-[11px]">Upcoming stops:</p>
                         <div className="space-y-1">
-                          {selectedVehicle.stops.map((s, i) => (
+                          {(selectedVehicle.type === "train" ? selectedVehicle.stops : selectedVehicle.stops.slice(0, 5)).map((s, i) => (
                             <div key={i} className="flex items-center justify-between gap-2">
                               <span className="text-gray-600 truncate text-[11px]">{s.stopName}</span>
                               <span className={`font-bold text-[11px] shrink-0 ${
@@ -1005,7 +1005,13 @@ export default function LiveMap() {
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: activeVehicleRoute.color }} />
-                <p className="text-[11px] text-white font-semibold">{activeVehicleRoute.type === "train" ? TRAIN_LINES[activeVehicleRoute.route as TrainLineId]?.name : `Route ${activeVehicleRoute.route}`}</p>
+                <p className="text-[11px] text-white font-semibold">
+                  {activeVehicleRoute.type === "train"
+                    ? (TRAIN_LINES[activeVehicleRoute.route as TrainLineId]?.name ?? activeVehicleRoute.route)
+                    : activeVehicleRoute.type === "metra"
+                      ? (METRA_LINES[activeVehicleRoute.route as MetraLineId]?.name ?? activeVehicleRoute.route)
+                      : `Route ${activeVehicleRoute.route}`}
+                </p>
               </div>
               <button onClick={() => { setActiveVehicleRoute(null); setSelectedVehicle(null); }} className="text-white/30 hover:text-white text-xs">✕</button>
             </div>
