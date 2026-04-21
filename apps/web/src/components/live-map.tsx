@@ -33,7 +33,7 @@ interface StopPrediction {
   destination: string;
   minutes: number;
   delayed: boolean;
-  type: "bus" | "train";
+  type: "bus" | "train" | "metra";
 }
 
 interface ActiveStopInfo {
@@ -41,7 +41,7 @@ interface ActiveStopInfo {
   name: string;
   lat: number;
   lng: number;
-  stopType: "bus" | "train";
+  stopType: "bus" | "train" | "metra";
   predictions: StopPrediction[];
   routePatterns: Array<{ route: string; color: string; patterns: RoutePattern[] }>;
 }
@@ -663,12 +663,12 @@ export default function LiveMap() {
     if (activeStop && activeStop.stopIds[0] === stop.stop_id) { setActiveStop(null); return; }
     setLoadingStop(true);
     try {
-      const res = await fetch(`/api/metra-predictions?stpid=${stop.stop_id}&route=${stop.route_id}`);
+      const res = await fetch(`/api/metra-predictions?stpid=${stop.stop_id}&route=${stop.route_id}&stationName=${encodeURIComponent(stop.name)}`);
       const data = await res.json();
       const predictions: StopPrediction[] = (data.predictions ?? []).map(
         (p: { route: string; direction: string; destination: string; minutes: number; isDelayed: boolean }) => ({
           route: p.route, direction: p.direction, destination: p.destination,
-          minutes: p.minutes, delayed: p.isDelayed, type: "metra" as "bus" | "train",
+          minutes: p.minutes, delayed: p.isDelayed, type: "metra",
         })
       );
       const metraColor = METRA_LINES[stop.route_id as MetraLineId]?.color ?? "#888";
@@ -678,11 +678,11 @@ export default function LiveMap() {
         : [];
       setActiveStop({
         stopIds: [stop.stop_id], name: stop.name, lat: stop.lat, lng: stop.lng,
-        stopType: "bus", predictions,
+        stopType: "metra", predictions,
         routePatterns: [{ route: stop.route_id, color: metraColor, patterns: metraPatterns }],
       });
     } catch {
-      setActiveStop({ stopIds: [stop.stop_id], name: stop.name, lat: stop.lat, lng: stop.lng, stopType: "bus", predictions: [], routePatterns: [] });
+      setActiveStop({ stopIds: [stop.stop_id], name: stop.name, lat: stop.lat, lng: stop.lng, stopType: "metra", predictions: [], routePatterns: [] });
     }
     setLoadingStop(false);
   }
@@ -725,7 +725,11 @@ export default function LiveMap() {
         <div className="flex flex-wrap gap-1 mt-1">
           {info.routePatterns.map((rp) => (
             <span key={rp.route} className="rounded px-1.5 py-0.5 text-white text-[10px] font-bold" style={{ backgroundColor: rp.color }}>
-              {info.stopType === "train" ? (TRAIN_LINES[rp.route as TrainLineId]?.name ?? rp.route) : `Rt ${rp.route}`}
+              {info.stopType === "train"
+                ? (TRAIN_LINES[rp.route as TrainLineId]?.name ?? rp.route)
+                : info.stopType === "metra"
+                  ? (METRA_LINES[rp.route as MetraLineId]?.name ?? rp.route)
+                  : `Rt ${rp.route}`}
             </span>
           ))}
         </div>
@@ -736,6 +740,8 @@ export default function LiveMap() {
             {info.predictions.slice(0, 8).map((p, i) => {
               const routeColor = p.type === "train"
                 ? (TRAIN_LINES[p.route as TrainLineId]?.color ?? "#888")
+                : p.type === "metra"
+                  ? (METRA_LINES[p.route as MetraLineId]?.color ?? "#888")
                 : (info.routePatterns.find((rp) => rp.route === p.route)?.color ?? "#1d4ed8");
               return (
                 <div key={i} className="flex items-center justify-between gap-2">
